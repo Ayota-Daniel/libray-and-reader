@@ -8,8 +8,8 @@ export function HomeScreen() {
         <p>Pick up where you left off.</p>
       </header>
       <EmptyState title="Your next chapter starts here">
-        Continue Reading, Recently opened, and Recently added will appear here
-        once local content is supported.
+        Open a local CBZ from Reader. Continue Reading and recent activity are
+        not available yet.
       </EmptyState>
     </>
   );

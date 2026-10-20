@@ -32,3 +32,12 @@ describe('reader navigation bounds', () => {
       ).toEqual(initialReaderState);
   });
 });
+
+test('a single page stays at both boundaries', () => {
+  const single = readerReducer(initialReaderState, {
+    type: 'open',
+    pageCount: 1,
+  });
+  expect(readerReducer(single, { type: 'step', delta: 1 })).toEqual(single);
+  expect(readerReducer(single, { type: 'step', delta: -1 })).toEqual(single);
+});

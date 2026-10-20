@@ -1,21 +1,17 @@
 import { useState } from 'react';
+import { useReader } from '../features/reader/useReader';
+import type { ReaderApi } from '../features/reader/model';
 import { HomeScreen } from '../screens/HomeScreen';
 import { LibraryScreen } from '../screens/LibraryScreen';
 import { ReaderScreen } from '../screens/ReaderScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 
-const screens = {
-  Home: HomeScreen,
-  Library: LibraryScreen,
-  Reader: ReaderScreen,
-  Settings: SettingsScreen,
-};
-type Screen = keyof typeof screens;
+type Screen = 'Home' | 'Library' | 'Reader' | 'Settings';
 const navigation: Screen[] = ['Home', 'Library', 'Reader', 'Settings'];
 
-export function App() {
+export function App({ readerApi }: { readerApi?: ReaderApi }) {
+  const reader = useReader(readerApi);
   const [screen, setScreen] = useState<Screen>('Home');
-  const ScreenContent = screens[screen];
   return (
     <div className="app-shell">
       <a className="skip-link" href="#content">
@@ -23,7 +19,7 @@ export function App() {
       </a>
       <aside>
         <div className="brand">
-          Manga Reader<span>Desktop · V0.1</span>
+          Manga Reader<span>Desktop · V0.2</span>
         </div>
         <nav aria-label="Main navigation">
           {navigation.map((item) => (
@@ -43,7 +39,15 @@ export function App() {
         </p>
       </aside>
       <main id="content" tabIndex={-1}>
-        <ScreenContent />
+        {screen === 'Reader' ? (
+          <ReaderScreen reader={reader} />
+        ) : screen === 'Home' ? (
+          <HomeScreen />
+        ) : screen === 'Library' ? (
+          <LibraryScreen />
+        ) : (
+          <SettingsScreen />
+        )}
       </main>
     </div>
   );

@@ -4,7 +4,7 @@ export function LibraryGrid({ books }: { books: readonly LibraryBook[] }) {
   if (books.length === 0)
     return (
       <EmptyState title="An empty shelf, for now">
-        Local content import is planned for the next milestone.
+        No persistent collection yet. Open a CBZ in Reader without importing it.
       </EmptyState>
     );
   return (

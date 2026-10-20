@@ -1,7 +1,7 @@
 {
   "name": "manga-reader",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -13,7 +13,8 @@
     "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "test": "bun test",
-    "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings"
+    "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings",
+    "typecheck:tests": "tsc --project tsconfig.tests.json --noEmit"
   },
   "dependencies": {
     "@tauri-apps/api": "2",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "2",
+    "@types/bun": "^1.4.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
@@ -30,6 +32,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.13.0",
+    "happy-dom": "^21.0.3",
     "prettier": "^3.9.10",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.72.0",

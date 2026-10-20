@@ -1,9 +1,9 @@
-import { invoke } from '@tauri-apps/api/core';
+import { desktopInvoke, invalidResponse } from './errors';
 import type { LibraryBook } from '../../features/library/model';
 
 // This module owns the wire format and command name. Screens never invoke directly.
 export async function listBooks(): Promise<LibraryBook[]> {
-  const result: unknown = await invoke('list_books');
+  const result: unknown = await desktopInvoke('list_books');
   if (
     !Array.isArray(result) ||
     !result.every(
@@ -16,7 +16,7 @@ export async function listBooks(): Promise<LibraryBook[]> {
         typeof book.title === 'string',
     )
   ) {
-    throw new Error('Unexpected library response from the desktop core');
+    return invalidResponse();
   }
   return result as LibraryBook[];
 }

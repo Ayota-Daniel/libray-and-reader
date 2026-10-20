@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-begin-open"
+description = "Enables the begin_open command without any pre-configured scope."
+commands.allow = ["begin_open"]
+
+[[permission]]
+identifier = "deny-begin-open"
+description = "Denies the begin_open command without any pre-configured scope."
+commands.deny = ["begin_open"]

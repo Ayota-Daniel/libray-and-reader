@@ -1,7 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Main local window; no filesystem, shell, or remote capabilities.",
+  "description": "Only the main local window can access bounded reader and library commands. No filesystem or dialog plugin commands exposed.",
   "windows": ["main"],
-  "permissions": []
+  "permissions": [
+    "allow-list-books",
+    "allow-begin-open",
+    "allow-open-selected",
+    "allow-cancel-open",
+    "allow-close-book",
+    "allow-request-page",
+    "allow-release-page"
+  ]
 }

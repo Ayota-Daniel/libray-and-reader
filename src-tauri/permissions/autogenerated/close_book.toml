@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-book"
+description = "Enables the close_book command without any pre-configured scope."
+commands.allow = ["close_book"]
+
+[[permission]]
+identifier = "deny-close-book"
+description = "Denies the close_book command without any pre-configured scope."
+commands.deny = ["close_book"]

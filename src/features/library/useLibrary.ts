@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { failure } from '../../shared/ipc/errors';
 import { listBooks } from '../../shared/ipc/library';
 import type { LibraryBook } from './model';
 
@@ -14,12 +15,11 @@ export function useLibrary(): LibraryState {
       (books) => {
         if (active) setState({ status: 'ready', books });
       },
-      () => {
+      (error: unknown) => {
         if (active)
           setState({
             status: 'error',
-            message:
-              'Could not reach the desktop core. Run this application with bun run dev.',
+            message: failure(error).message,
           });
       },
     );
