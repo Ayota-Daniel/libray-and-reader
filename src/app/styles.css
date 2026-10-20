@@ -1,0 +1,180 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #e6e7ec;
+  background: #14151a;
+  color-scheme: dark;
+  font-synthesis: none;
+  line-height: 1.5;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+  background: #292b34;
+  border: 1px solid #434653;
+  border-radius: 7px;
+  padding: 0.65rem 1rem;
+}
+button:hover:not(:disabled) {
+  background: #363947;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+:focus-visible {
+  outline: 2px solid #b6acf9;
+  outline-offset: 4px;
+}
+.app-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 100vh;
+}
+aside {
+  padding: 2rem 1.25rem;
+  background: #1b1c23;
+  border-right: 1px solid #30323b;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+.brand {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.brand span {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #a4a6b4;
+  margin-top: 0.3rem;
+}
+nav {
+  display: grid;
+  gap: 0.5rem;
+}
+nav button {
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+}
+nav button[aria-current] {
+  background: #353044;
+  color: #dbd2ff;
+}
+.sidebar-note {
+  margin-top: auto;
+  font-size: 0.85rem;
+  color: #a4a6b4;
+}
+main {
+  padding: clamp(1.5rem, 5vw, 4rem);
+}
+header {
+  margin-bottom: 2.5rem;
+}
+h1 {
+  margin: 0.2rem 0;
+  font-size: 2.2rem;
+  letter-spacing: -0.04em;
+}
+h2 {
+  font-size: 1.15rem;
+  font-weight: 550;
+}
+p {
+  color: #acafbd;
+}
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: #beb1ef;
+}
+.empty-state {
+  padding: 3rem 1.5rem;
+  border: 1px dashed #3c3e49;
+  border-radius: 10px;
+  text-align: center;
+}
+.empty-state p {
+  max-width: 500px;
+  margin: auto;
+}
+.connection-status {
+  font-size: 0.85rem;
+}
+.reader-viewport {
+  min-height: 45vh;
+  display: grid;
+  place-items: center;
+  background: #0e0f12;
+  border-radius: 10px;
+  padding: 1rem;
+}
+.reader-viewport .empty-state {
+  border: 0;
+}
+.reader-navigation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+}
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -100px;
+  padding: 0.5rem;
+  background: #292b34;
+  color: white;
+}
+.skip-link:focus {
+  top: 1rem;
+}
+@media (max-width: 640px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  aside {
+    padding: 1rem;
+    gap: 1rem;
+    border-right: 0;
+    border-bottom: 1px solid #30323b;
+  }
+  nav {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  nav button {
+    padding: 0.6rem 0.3rem;
+    text-align: center;
+  }
+  .sidebar-note {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
