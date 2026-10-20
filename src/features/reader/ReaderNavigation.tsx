@@ -1,9 +1,12 @@
+import type { ReadingDirection } from './layout';
 import type { ReaderState } from './state';
 export function ReaderNavigation({
+  direction,
   state,
   previous,
   next,
 }: {
+  direction: ReadingDirection;
   state: ReaderState;
   previous: () => void;
   next: () => void;
@@ -11,6 +14,7 @@ export function ReaderNavigation({
   return (
     <div
       className="reader-navigation"
+      data-direction={direction}
       aria-label="Page navigation"
       role="group"
     >

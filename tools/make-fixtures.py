@@ -6,11 +6,16 @@ import zipfile
 from pathlib import Path
 
 
-def png(number, color):
-    width, height = 240, 360
+def png(number, color, width=240, height=360):
     glyphs = {"1": ["010", "110", "010", "010", "111"],
               "2": ["111", "001", "111", "100", "111"],
               "0": ["111", "101", "101", "101", "111"]}
+    glyphs.update({"3": ["111", "001", "111", "001", "111"],
+                   "4": ["101", "101", "111", "001", "001"],
+                   "5": ["111", "100", "111", "001", "111"],
+                   "6": ["111", "100", "111", "101", "111"],
+                   "7": ["111", "001", "010", "010", "010"],
+                   "8": ["111", "101", "111", "101", "111"]})
     digits = str(number)
     data = bytearray()
     left = (width - (len(digits) * 4 - 1) * 16) // 2
@@ -19,7 +24,7 @@ def png(number, color):
         for x in range(width):
             ink = False
             for i, digit in enumerate(digits):
-                gx, gy = (x - left - i * 64) // 16, (y - 140) // 16
+                gx, gy = (x - left - i * 64) // 16, (y - (height - 80) // 2) // 16
                 if 0 <= gx < 3 and 0 <= gy < 5:
                     ink |= glyphs[digit][gy][gx] == "1"
             data.extend((245, 245, 245) if ink else color)
@@ -56,7 +61,11 @@ def main():
     write_cbz(output / "empty.cbz", [("notes.txt", b"No pages", 0)])
     write_cbz(output / "unsafe.cbz", [("../page.png", pages[0], 0)])
     (output / "invalid.cbz").write_bytes(b"This is not a ZIP archive.")
-    print(f"Created six synthetic fixtures in {output.resolve()}")
+    write_cbz(output / "viewport.cbz", [("page1.png", png(1, (40, 60, 100), 1600, 2400), 8),
+                                      ("page2.png", png(2, (40, 100, 70), 2400, 1600), 8)])
+    write_cbz(output / "cache.cbz", [(f"page{i}.png", png(i, (30 + i * 15, 70, 100)), 8)
+                                    for i in range(1, 9)])
+    print(f"Created eight synthetic fixtures in {output.resolve()}")
 
 
 if __name__ == "__main__":

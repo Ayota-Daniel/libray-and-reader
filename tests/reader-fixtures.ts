@@ -38,7 +38,7 @@ export function resource(
 export function fakeApi() {
   const closed: string[] = [];
   const cancelled: string[] = [];
-  const released: [string, number][] = [];
+  const released: string[] = [];
   const loaded: { sessionId: string; pageId: string; signal: AbortSignal }[] =
     [];
   const api: ReaderApi = {
@@ -52,10 +52,13 @@ export function fakeApi() {
     },
     loadPage: async (sessionId, pageId, _revision, signal) => {
       loaded.push({ sessionId, pageId, signal });
-      return resource(`blob:${pageId}`);
-    },
-    releasePage: async (id, revision) => {
-      released.push([id, revision]);
+      const page = resource(`blob:${pageId}`);
+      const dispose = page.dispose.bind(page);
+      page.dispose = () => {
+        released.push(pageId);
+        dispose();
+      };
+      return page;
     },
   };
   return { api, closed, cancelled, released, loaded };

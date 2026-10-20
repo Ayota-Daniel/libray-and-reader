@@ -79,48 +79,70 @@ export const readerApi: ReaderApi = {
   },
   cancelOpen: (operationId) => emptyCommand('cancel_open', { operationId }),
   closeBook: (sessionId) => emptyCommand('close_book', { sessionId }),
-  releasePage: (sessionId, revision) =>
-    emptyCommand('release_page', { sessionId, revision }),
   async loadPage(sessionId, pageId, revision, signal) {
     cancelled(signal);
     const ticket = parseId(
       await desktopInvoke('request_page', { sessionId, pageId, revision }),
     );
-    cancelled(signal);
-    // convertFileSrc handles page://localhost on Linux/macOS and
-    // http(s)://page.localhost on Windows. The path contains only opaque IDs.
-    const url = convertFileSrc(`${sessionId}_${ticket}`, 'page');
-    let response: Response | undefined;
-    for (let attempt = 0; attempt < 250; attempt++) {
+    let releasing: Promise<void> | undefined;
+    const release = () =>
+      (releasing ??= emptyCommand('release_page', {
+        sessionId,
+        ticketId: ticket,
+      }).catch((error) => {
+        if (failure(error).code !== 'session_expired') throw error;
+      }));
+    const onAbort = () => {
+      void release().catch(() => {
+        /* Finalizer observes this failure. */
+      });
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    let blob: Blob;
+    let width: number;
+    let height: number;
+    try {
       cancelled(signal);
-      response = await fetch(url, { signal, cache: 'no-store' });
-      if (response.status !== 409 || attempt === 249) break;
-      await response.body?.cancel();
-      await pause(signal);
+      // convertFileSrc handles page://localhost on Linux/macOS and
+      // http(s)://page.localhost on Windows. The path contains only opaque IDs.
+      const url = convertFileSrc(`${sessionId}_${ticket}`, 'page');
+      let response: Response | undefined;
+      for (let attempt = 0; attempt < 250; attempt++) {
+        cancelled(signal);
+        response = await fetch(url, { signal, cache: 'no-store' });
+        if (response.status !== 409 || attempt === 249) break;
+        await response.body?.cancel();
+        await pause(signal);
+      }
+      cancelled(signal);
+      if (!response) return invalidResponse();
+      if (!response.ok) {
+        const error = failure(await response.json());
+        throw new DesktopError(error.code, error.message);
+      }
+      const mime = response.headers.get('Content-Type');
+      width = Number(response.headers.get('X-Page-Width'));
+      height = Number(response.headers.get('X-Page-Height'));
+      if (
+        !['image/png', 'image/jpeg'].includes(mime ?? '') ||
+        !Number.isSafeInteger(width) ||
+        !Number.isSafeInteger(height) ||
+        width < 1 ||
+        height < 1 ||
+        width > 16_384 ||
+        height > 16_384 ||
+        width * height > 12_000_000
+      )
+        return invalidResponse();
+      blob = await response.blob();
+      cancelled(signal);
+      if (blob.size === 0 || blob.size > MAX_BYTES) return invalidResponse();
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+      await release();
     }
     cancelled(signal);
-    if (!response) return invalidResponse();
-    if (!response.ok) {
-      const error = failure(await response.json());
-      throw new DesktopError(error.code, error.message);
-    }
-    const mime = response.headers.get('Content-Type');
-    const width = Number(response.headers.get('X-Page-Width'));
-    const height = Number(response.headers.get('X-Page-Height'));
-    if (
-      !['image/png', 'image/jpeg'].includes(mime ?? '') ||
-      !Number.isSafeInteger(width) ||
-      !Number.isSafeInteger(height) ||
-      width < 1 ||
-      height < 1 ||
-      width > 16_384 ||
-      height > 16_384 ||
-      width * height > 12_000_000
-    )
-      return invalidResponse();
-    const blob = await response.blob();
-    cancelled(signal);
-    if (blob.size === 0 || blob.size > MAX_BYTES) return invalidResponse();
+    // Native owns only the bounded read lease, not these frontend bytes.
     const objectUrl = URL.createObjectURL(blob);
     let disposed = false;
     return {

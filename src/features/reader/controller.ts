@@ -1,3 +1,4 @@
+import { PageCache } from './pageCache';
 import { failure } from '../../shared/ipc/errors';
 import type { ReaderApi, ReaderFailure, ReadingSession } from './model';
 import { readerReducer } from './state';
@@ -23,7 +24,10 @@ export class ReaderController {
   private operationId: string | null = null;
   private revision = 0;
   private disposed = false;
-  constructor(readonly api: ReaderApi) {}
+  readonly pages: PageCache;
+  constructor(readonly api: ReaderApi) {
+    this.pages = new PageCache(api, this.nextRevision);
+  }
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -33,6 +37,11 @@ export class ReaderController {
   };
   private update(patch: Partial<ReaderSnapshot>) {
     if (this.disposed) return;
+    if (
+      'book' in patch &&
+      patch.book?.sessionId !== this.snapshot.book?.sessionId
+    )
+      this.pages.clear();
     this.snapshot = { ...this.snapshot, ...patch };
     for (const listener of this.listeners) listener();
   }
@@ -102,6 +111,7 @@ export class ReaderController {
   dispose = () => {
     if (this.disposed) return;
     this.disposed = true;
+    this.pages.dispose();
     ++this.generation;
     const book = this.snapshot.book;
     if (this.operationId)

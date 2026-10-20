@@ -1,3 +1,4 @@
+import type { ReadingDirection } from './layout';
 export function navigationDelta(
   event: Pick<
     KeyboardEvent,
@@ -11,6 +12,7 @@ export function navigationDelta(
   >,
   target: EventTarget | null,
   active: boolean,
+  direction: ReadingDirection = 'ltr',
 ): -1 | 1 | null {
   if (
     !active ||
@@ -29,5 +31,13 @@ export function navigationDelta(
     )
   )
     return null;
-  return event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : null;
+  const physical =
+    event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : null;
+  return physical === null
+    ? null
+    : direction === 'rtl'
+      ? physical === 1
+        ? -1
+        : 1
+      : physical;
 }

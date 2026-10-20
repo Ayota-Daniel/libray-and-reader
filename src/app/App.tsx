@@ -19,7 +19,7 @@ export function App({ readerApi }: { readerApi?: ReaderApi }) {
       </a>
       <aside>
         <div className="brand">
-          Manga Reader<span>Desktop · V0.2</span>
+          Manga Reader<span>Desktop · V0.4</span>
         </div>
         <nav aria-label="Main navigation">
           {navigation.map((item) => (

@@ -164,10 +164,10 @@ pub fn release_page(
     window: WebviewWindow,
     reader: State<'_, Arc<Reader>>,
     session_id: String,
-    revision: u64,
+    ticket_id: String,
 ) -> CommandResult<()> {
     authorize(&window)?;
     reader
-        .release_page(&session_id, revision)
+        .release_page(&session_id, &ticket_id)
         .map_err(Into::into)
 }

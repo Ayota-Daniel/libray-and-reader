@@ -101,7 +101,7 @@ fn single_admission_no_queue_and_close_during_read() {
     assert!(reader.prepare_read(&book.session_id, &ticket).is_err());
 }
 #[test]
-fn latest_request_wins_even_when_commands_arrive_out_of_order() {
+fn tickets_coexist_and_stale_release_does_not_cancel_another_page() {
     let reader = Arc::new(Reader::default());
     let drops = Arc::new(AtomicUsize::new(0));
     let book = open(&reader, &drops);
@@ -112,18 +112,20 @@ fn latest_request_wins_even_when_commands_arrive_out_of_order() {
     let newest = reader
         .request_page(&book.session_id, &book.pages[1], 3)
         .unwrap();
-    assert!(!work.is_current());
+    assert!(work.is_current());
     assert!(reader
         .request_page(&book.session_id, &book.pages[0], 2)
         .is_err());
-    reader.release_page(&book.session_id, 2).unwrap();
+    reader.release_page(&book.session_id, &first).unwrap();
+    assert!(!work.is_current());
+    reader.release_page(&book.session_id, &first).unwrap();
     drop(work);
     assert!(reader
         .prepare_read(&book.session_id, &newest)
         .unwrap()
         .read()
         .is_ok());
-    reader.release_page(&book.session_id, 4).unwrap();
+    reader.release_page(&book.session_id, &newest).unwrap();
     assert!(reader.prepare_read(&book.session_id, &newest).is_err());
 }
 #[test]
@@ -194,4 +196,120 @@ fn close_cancels_an_actually_running_worker_without_queueing_another() {
     resume.wait();
     assert_eq!(thread.join().unwrap(), Code::SessionExpired);
     assert!(!reader.reading.load(Ordering::Acquire));
+}
+
+#[test]
+fn three_independent_tickets_are_bounded_and_all_shutdown_leases_are_invalidated() {
+    let reader = Arc::new(Reader::default());
+    let drops = Arc::new(AtomicUsize::new(0));
+    let book = open(&reader, &drops);
+    let tickets: Vec<_> = (1..=3)
+        .map(|revision| {
+            reader
+                .request_page(&book.session_id, &book.pages[0], revision)
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(
+        reader
+            .request_page(&book.session_id, &book.pages[1], 4)
+            .unwrap_err()
+            .code,
+        Code::Busy
+    );
+    for ticket in &tickets {
+        assert!(reader
+            .prepare_read(&book.session_id, ticket)
+            .unwrap()
+            .read()
+            .is_ok());
+    }
+    reader.release_page(&book.session_id, &tickets[1]).unwrap();
+    let fourth = reader
+        .request_page(&book.session_id, &book.pages[1], 4)
+        .unwrap();
+    reader.release_page(&book.session_id, &tickets[1]).unwrap();
+    assert!(reader
+        .prepare_read(&book.session_id, &fourth)
+        .unwrap()
+        .read()
+        .is_ok());
+    let live = reader.prepare_read(&book.session_id, &tickets[0]).unwrap();
+    reader.shutdown();
+    assert!(!live.is_current());
+    assert!(reader.state.lock().unwrap().tickets.is_empty());
+    drop(live);
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn releasing_preload_cancels_worker_without_cancelling_foreground_ticket() {
+    use std::sync::Barrier;
+    struct GatedSource {
+        entered: Arc<Barrier>,
+        resume: Arc<Barrier>,
+    }
+    impl PageSource for GatedSource {
+        fn page_count(&self) -> usize {
+            2
+        }
+        fn read_page(&mut self, index: usize, current: &dyn Fn() -> bool) -> Result<PageData> {
+            if index == 0 {
+                self.entered.wait();
+                self.resume.wait();
+            }
+            if !current() {
+                return Err(expired());
+            }
+            Ok(PageData {
+                bytes: vec![1],
+                mime: "image/png",
+                width: 1,
+                height: 1,
+            })
+        }
+    }
+    let reader = Arc::new(Reader::default());
+    let entered = Arc::new(Barrier::new(2));
+    let resume = Arc::new(Barrier::new(2));
+    let op = reader.begin_open().unwrap();
+    let book = reader
+        .start_open(&op)
+        .unwrap()
+        .commit(
+            Box::new(GatedSource {
+                entered: entered.clone(),
+                resume: resume.clone(),
+            }),
+            "Gate".into(),
+        )
+        .unwrap();
+    let preload = reader
+        .request_page(&book.session_id, &book.pages[0], 1)
+        .unwrap();
+    let work = reader.prepare_read(&book.session_id, &preload).unwrap();
+    let thread = std::thread::spawn(move || work.read().err().unwrap().code);
+    entered.wait();
+    reader.release_page(&book.session_id, &preload).unwrap();
+    let foreground = reader
+        .request_page(&book.session_id, &book.pages[1], 2)
+        .unwrap();
+    assert_eq!(
+        reader
+            .prepare_read(&book.session_id, &foreground)
+            .err()
+            .unwrap()
+            .code,
+        Code::Busy
+    );
+    resume.wait();
+    assert_eq!(thread.join().unwrap(), Code::SessionExpired);
+    reader.release_page(&book.session_id, &preload).unwrap();
+    assert!(reader
+        .prepare_read(&book.session_id, &foreground)
+        .unwrap()
+        .read()
+        .is_ok());
+    reader.close(&book.session_id).unwrap();
+    assert!(reader.state.lock().unwrap().tickets.is_empty());
 }

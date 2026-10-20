@@ -1,6 +1,6 @@
 [package]
 name = "manga-reader"
-version = "0.2.0"
+version = "0.4.0"
 description = "A local-first desktop comic and manga reader"
 edition = "2021"
 

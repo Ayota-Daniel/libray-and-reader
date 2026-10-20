@@ -1,17 +1,24 @@
 # Manga Reader
 
-V0.2 local-first desktop comic/scan/manga reader: Tauri 2, React, strict TypeScript,
+V0.4 local-first desktop comic/scan/manga reader: Tauri 2, React, strict TypeScript,
 Vite, Bun and one Rust crate. Linux is the current build platform. Windows/macOS
 compatibility is preserved in the design but has not been validated.
 
 Reader can select one CBZ with a native picker, index its pages, display a single
-page on demand, navigate with buttons or LTR arrow keys, replace it and close it.
+page on demand, navigate with buttons or LTR/RTL arrow keys, replace it and close it.
 Cancelling or failing a replacement preserves the current book. Switching screens
 preserves the session/page; restarting the app does not. **Opening is not importing:**
 Library still has no persistent collection and returns `[]` from Rust.
 
 Static JPEG/PNG with ZIP Stored/Deflate are supported. No CBR/PDF/WebP, remote
-sources, persistence, animated transitions, advanced zoom or installers.
+sources, persistence, animated transitions or installers.
+Reader offers Fit Page, Fit Width, Fit Height and Original Size, bounded zoom
+(25–400% of the chosen fit), reset and pointer-drag panning for oversized pages.
+Direction/fit survive screen changes; zoom and pan reset on page changes.
+These controls do not reload the current page. Preferences are not persisted.
+V0.4 preloads adjacent pages in a memory-only, three-page working set with a
+64 MiB decoded-size estimate budget. Cached navigation avoids a new archive read.
+Large pages reduce neighbor retention; leaving Reader clears the cache.
 See [architecture](docs/architecture.md) for precise limits, ordering, supported
 ZIP variants, source/session contracts and resource ownership.
 
@@ -71,10 +78,10 @@ Prettier/rustfmt. Tests are statically checked via `tsconfig.tests.json`; Bun al
 does not typecheck them. Frontend interaction tests use Happy DOM and React's act.
 Rust tests generate tiny ZIP/image fixtures in temporary files and remove them.
 
-For manual native testing, Python 3's standard library creates six tiny archives:
+For manual native testing, Python 3's standard library creates eight synthetic archives:
 
 ```sh
-python3 tools/make-fixtures.py /tmp/manga-reader-v02
+python3 tools/make-fixtures.py /tmp/manga-reader-v04
 ```
 
 No downloads or real manga are needed. Follow the native release scenario in
@@ -123,3 +130,5 @@ The dialog plugin brings `rfd` and `tauri-plugin-fs` transitively, but no filesy
 plugin commands or scopes are exposed to the frontend. The initially evaluated
 `zip` crate was replaced with `rawzip` because its filename map collapses duplicate
 entries; `zip` and its extra encoder dependencies are absent from the final manifest.
+
+V0.3/V0.4 add no dependencies. Archive validation and security limits are unchanged.

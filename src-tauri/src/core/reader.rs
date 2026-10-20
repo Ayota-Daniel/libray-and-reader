@@ -12,6 +12,8 @@ use std::{
 };
 use uuid::Uuid;
 
+const MAX_PAGE_TICKETS: usize = 3;
+
 pub fn opaque_id() -> String {
     Uuid::new_v4().simple().to_string()
 }
@@ -50,7 +52,7 @@ struct Ticket {
 struct State {
     session: Option<Arc<Session>>,
     opening: Option<Opening>,
-    ticket: Option<Ticket>,
+    tickets: Vec<Ticket>,
     revision: u64,
 }
 
@@ -114,7 +116,7 @@ impl Reader {
             .ok_or_else(expired)?;
         session.alive.store(false, Ordering::Release);
         state.session = None;
-        invalidate_ticket(&mut state);
+        invalidate_tickets(&mut state);
         Ok(())
     }
     pub fn shutdown(&self) {
@@ -125,7 +127,7 @@ impl Reader {
             if let Some(opening) = &state.opening {
                 opening.cancelled.store(true, Ordering::Release);
             }
-            invalidate_ticket(&mut state);
+            invalidate_tickets(&mut state);
         }
     }
     pub fn request_page(&self, session_id: &str, page_id: &str, revision: u64) -> Result<String> {
@@ -144,20 +146,20 @@ impl Reader {
         if revision <= state.revision || revision > 9_007_199_254_740_991 {
             return Err(expired());
         }
+        if state.tickets.len() >= MAX_PAGE_TICKETS {
+            return Err(busy());
+        }
         state.revision = revision;
-        invalidate_ticket(&mut state);
         let id = opaque_id();
-        state.ticket = Some(Ticket {
+        state.tickets.push(Ticket {
             id: id.clone(),
             page_index,
             current: Arc::new(AtomicBool::new(true)),
         });
         Ok(id)
     }
-    pub fn release_page(&self, session_id: &str, revision: u64) -> Result<()> {
-        if revision == 0 || revision > 9_007_199_254_740_991 {
-            return Err(expired());
-        }
+    // Release is idempotent and scoped to one opaque ticket, never a revision range.
+    pub fn release_page(&self, session_id: &str, ticket_id: &str) -> Result<()> {
         let mut state = self.state.lock().map_err(|_| expired())?;
         if !state
             .session
@@ -166,9 +168,12 @@ impl Reader {
         {
             return Err(expired());
         }
-        if revision >= state.revision {
-            state.revision = revision;
-            invalidate_ticket(&mut state);
+        if let Some(index) = state.tickets.iter().position(|t| t.id == ticket_id) {
+            state
+                .tickets
+                .remove(index)
+                .current
+                .store(false, Ordering::Release);
         }
         Ok(())
     }
@@ -181,9 +186,9 @@ impl Reader {
             .filter(|s| s.book.session_id == session_id)
             .ok_or_else(expired)?;
         let ticket = state
-            .ticket
-            .as_ref()
-            .filter(|t| t.id == ticket_id && t.current.load(Ordering::Acquire))
+            .tickets
+            .iter()
+            .find(|t| t.id == ticket_id && t.current.load(Ordering::Acquire))
             .ok_or_else(expired)?;
         self.reading
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -196,8 +201,8 @@ impl Reader {
         })
     }
 }
-fn invalidate_ticket(state: &mut State) {
-    if let Some(ticket) = state.ticket.take() {
+fn invalidate_tickets(state: &mut State) {
+    for ticket in state.tickets.drain(..) {
         ticket.current.store(false, Ordering::Release);
     }
 }
@@ -239,7 +244,7 @@ impl OpenWork {
         if let Some(old) = state.session.take() {
             old.alive.store(false, Ordering::Release);
         }
-        invalidate_ticket(&mut state);
+        invalidate_tickets(&mut state);
         state.revision = 0;
         state.session = Some(Arc::new(Session {
             book: book.clone(),

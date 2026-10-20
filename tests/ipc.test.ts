@@ -67,7 +67,7 @@ test('keyboard mapping stays contextual and preserves editable controls', () => 
 
 test('media adapter uses opaque protocol URLs, binary blobs and idempotent disposal', async () => {
   Object.assign(globalThis, { isTauri: true });
-  mockIPC(() => 'c'.repeat(32));
+  mockIPC((command) => (command === 'request_page' ? 'c'.repeat(32) : null));
   mockConvertFileSrc('linux');
   const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response(new Uint8Array([137, 80]), {
@@ -102,7 +102,7 @@ test('media adapter uses opaque protocol URLs, binary blobs and idempotent dispo
 
 test('media busy retry keeps the current ticket and preserves structured page failures', async () => {
   Object.assign(globalThis, { isTauri: true });
-  mockIPC(() => 'c'.repeat(32));
+  mockIPC((command) => (command === 'request_page' ? 'c'.repeat(32) : null));
   mockConvertFileSrc('windows');
   const fetchMock = spyOn(globalThis, 'fetch')
     .mockResolvedValueOnce(
@@ -135,7 +135,7 @@ test('media busy retry keeps the current ticket and preserves structured page fa
 
 test('media adapter rejects malformed dimensions and honours an already aborted request', async () => {
   Object.assign(globalThis, { isTauri: true });
-  mockIPC(() => 'c'.repeat(32));
+  mockIPC((command) => (command === 'request_page' ? 'c'.repeat(32) : null));
   mockConvertFileSrc('linux');
   const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response(new Uint8Array([1]), {
@@ -161,6 +161,115 @@ test('media adapter rejects malformed dimensions and honours an already aborted 
       readerApi.loadPage(book.sessionId, book.pages[0]!.id, 2, abort.signal),
     ).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  } finally {
+    fetchMock.mockRestore();
+  }
+});
+
+test('native ticket is released once on binary delivery, before cache URL disposal', async () => {
+  Object.assign(globalThis, { isTauri: true });
+  const releases: unknown[] = [];
+  mockIPC((command, args) => {
+    if (command === 'request_page') return 'd'.repeat(32);
+    if (command === 'release_page') releases.push(args);
+    return null;
+  });
+  mockConvertFileSrc('linux');
+  const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(new Uint8Array([1]), {
+      headers: {
+        'Content-Type': 'image/png',
+        'X-Page-Width': '1',
+        'X-Page-Height': '1',
+      },
+    }),
+  );
+  try {
+    const page = await readerApi.loadPage(
+      book.sessionId,
+      book.pages[0]!.id,
+      1,
+      new AbortController().signal,
+    );
+    expect(releases).toEqual([
+      { sessionId: book.sessionId, ticketId: 'd'.repeat(32) },
+    ]);
+    page.dispose();
+    page.dispose();
+    expect(releases).toHaveLength(1);
+  } finally {
+    fetchMock.mockRestore();
+  }
+});
+
+test('abort before ticket reply still releases the late ticket without fetching bytes', async () => {
+  Object.assign(globalThis, { isTauri: true });
+  const pending = Promise.withResolvers<string>();
+  const releases: unknown[] = [];
+  mockIPC((command, args) => {
+    if (command === 'request_page') return pending.promise;
+    releases.push(args);
+    return null;
+  });
+  const fetchMock = spyOn(globalThis, 'fetch');
+  const abort = new AbortController();
+  try {
+    const result = readerApi.loadPage(
+      book.sessionId,
+      book.pages[0]!.id,
+      1,
+      abort.signal,
+    );
+    abort.abort();
+    pending.resolve('e'.repeat(32));
+    await expect(result).rejects.toThrow();
+    expect(releases).toEqual([
+      { sessionId: book.sessionId, ticketId: 'e'.repeat(32) },
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  } finally {
+    fetchMock.mockRestore();
+  }
+});
+
+test('abort during fetch cancels the exact native ticket; failure and finally do not double release', async () => {
+  Object.assign(globalThis, { isTauri: true });
+  const entered = Promise.withResolvers<void>();
+  const releases: unknown[] = [];
+  mockIPC((command, args) => {
+    if (command === 'request_page') return 'f'.repeat(32);
+    releases.push(args);
+    return null;
+  });
+  mockConvertFileSrc('linux');
+  const fetchMock = spyOn(globalThis, 'fetch').mockImplementation(
+    Object.assign(
+      (_url: RequestInfo | URL, options?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () => reject(new Error('aborted')),
+            { once: true },
+          );
+          entered.resolve();
+        }),
+      { preconnect: fetch.preconnect },
+    ),
+  );
+  try {
+    const abort = new AbortController();
+    const result = readerApi.loadPage(
+      book.sessionId,
+      book.pages[0]!.id,
+      1,
+      abort.signal,
+    );
+    await entered.promise;
+    abort.abort();
+    await expect(result).rejects.toThrow();
+    expect(releases).toEqual([
+      { sessionId: book.sessionId, ticketId: 'f'.repeat(32) },
+    ]);
   } finally {
     fetchMock.mockRestore();
   }

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { ReaderModel } from '../features/reader/useReader';
 import { usePage } from '../features/reader/usePage';
 import { navigationDelta } from '../features/reader/keyboard';
-import { ReaderViewport } from '../features/reader/ReaderViewport';
+import { ReaderPresentation } from '../features/reader/ReaderPresentation';
 import { ReaderNavigation } from '../features/reader/ReaderNavigation';
 export function ReaderScreen({ reader }: { reader: ReaderModel }) {
   const { controller, snapshot } = reader;
@@ -10,7 +10,12 @@ export function ReaderScreen({ reader }: { reader: ReaderModel }) {
   const page = usePage(controller, book?.sessionId, book?.pages[pageIndex]?.id);
   useEffect(() => {
     const navigate = (event: KeyboardEvent) => {
-      const delta = navigationDelta(event, event.target, !!book && !closing);
+      const delta = navigationDelta(
+        event,
+        event.target,
+        !!book && !closing,
+        reader.direction,
+      );
       if (delta !== null) {
         event.preventDefault();
         controller.step(delta);
@@ -18,7 +23,7 @@ export function ReaderScreen({ reader }: { reader: ReaderModel }) {
     };
     window.addEventListener('keydown', navigate);
     return () => window.removeEventListener('keydown', navigate);
-  }, [book, closing, controller]);
+  }, [book, closing, controller, reader.direction]);
   return (
     <div className="reader-screen">
       <header>
@@ -48,8 +53,14 @@ export function ReaderScreen({ reader }: { reader: ReaderModel }) {
         {closing && <p role="status">Closing book…</p>}
         {error && <p role="alert">{error.message}</p>}
       </header>
-      <ReaderViewport page={page} number={pageIndex + 1} />
+      <ReaderPresentation
+        key={`${book?.sessionId}:${pageIndex}`}
+        reader={reader}
+        page={page}
+        number={pageIndex + 1}
+      />
       <ReaderNavigation
+        direction={reader.direction}
         state={{ pageCount: book?.pages.length ?? 0, pageIndex }}
         previous={() => controller.step(-1)}
         next={() => controller.step(1)}

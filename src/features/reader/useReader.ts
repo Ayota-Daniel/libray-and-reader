@@ -1,9 +1,12 @@
+import type { FitMode, ReadingDirection } from './layout';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ReaderController } from './controller';
 import { readerApi } from '../../shared/ipc/reader';
 import type { ReaderApi } from './model';
 
 export function useReader(api: ReaderApi = readerApi) {
+  const [direction, setDirection] = useState<ReadingDirection>('ltr');
+  const [fit, setFit] = useState<FitMode>('page');
   const [controller] = useState(() => new ReaderController(api));
   const lifecycleRef = useRef({ generation: 0 });
   useEffect(() => {
@@ -20,6 +23,6 @@ export function useReader(api: ReaderApi = readerApi) {
     controller.subscribe,
     controller.getSnapshot,
   );
-  return { controller, snapshot };
+  return { controller, snapshot, direction, setDirection, fit, setFit };
 }
 export type ReaderModel = ReturnType<typeof useReader>;

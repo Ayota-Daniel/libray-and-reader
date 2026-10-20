@@ -28,5 +28,4 @@ export interface ReaderApi {
     revision: number,
     signal: AbortSignal,
   ): Promise<PageResource>;
-  releasePage(sessionId: string, revision: number): Promise<void>;
 }
