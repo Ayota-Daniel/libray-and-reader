@@ -64,7 +64,7 @@ export function App({
       </a>
       <aside>
         <div className="brand">
-          Manga Reader<span>Desktop · V0.5</span>
+          Manga Reader<span>Desktop · V0.6</span>
         </div>
         <nav aria-label="Main navigation">
           {navigation.map((item) => (

@@ -273,3 +273,82 @@ test('replacement while a preload is pending cannot publish old data into the ne
   });
   cache.dispose();
 });
+
+test('spread pins two active resources and preloads only one next-spread page within three slots', async () => {
+  const { cache, calls, finish } = rig();
+  cache.selectPresentation(volume, [0, 1], [2, 3]);
+  const a = await finish(0);
+  const b = await finish(1);
+  const next = await finish(2);
+  expect(calls.map((c) => c.index)).toEqual([0, 1, 2]);
+  expect(cache.inspect().ready).toEqual([0, 1, 2]);
+  expect(a.disposed || b.disposed).toBe(false);
+  cache.selectPresentation(volume, [2, 3], [4, 5]);
+  expect(next.disposed).toBe(false);
+  expect(calls[3]!.index).toBe(3);
+  await finish(3);
+  await finish(4);
+  expect(cache.inspect().indices.length).toBe(3);
+  cache.selectPresentation(volume, [4], [5, 6, 2, 3]);
+  expect(cache.inspect().ready).toContain(4);
+  cache.dispose();
+  await finish(5);
+});
+test('two maximum-size active pages exceed normal budget safely and skip speculation', async () => {
+  const { cache, calls, finish } = rig();
+  cache.selectPresentation(volume, [0, 1], [2, 3]);
+  const large = () => ({ ...resource(), width: 3000, height: 4000 });
+  const a = await finish(0, large());
+  const b = await finish(1, large());
+  expect(cache.inspect().bytes).toBe(96_000_000);
+  expect(cache.inspect().ready).toEqual([0, 1]);
+  expect(calls).toHaveLength(2);
+  expect(a.disposed || b.disposed).toBe(false);
+  cache.dispose();
+  expect(a.disposed && b.disposed).toBe(true);
+});
+test('spread partial failure retains success, retries failed slot and discards obsolete acquisition', async () => {
+  const { cache, calls, finish, fail } = rig();
+  cache.selectPresentation(volume, [0, 1], [2, 3]);
+  const a = await finish(0);
+  await fail(1);
+  expect(cache.peek(volume.sessionId, volume.pages[1]!.id).status).toBe(
+    'error',
+  );
+  expect(a.disposed).toBe(false);
+  cache.retry(1); // foreground retry waits for currently running bounded preload
+  await finish(2);
+  const b = await finish(3);
+  expect(cache.peek(volume.sessionId, volume.pages[1]!.id).status).toBe(
+    'ready',
+  );
+  cache.selectPresentation(volume, [4, 5], [6, 7]);
+  cache.selectPresentation(volume, [6, 7], [4, 5]);
+  expect(calls[4]!.signal.aborted).toBe(true);
+  const stale = await finish(4);
+  expect(stale.disposed).toBe(true);
+  expect(a.disposed && b.disposed).toBe(true);
+  expect(calls[5]!.index).toBe(6);
+  cache.dispose();
+  const late = await finish(5);
+  expect(late.disposed).toBe(true);
+});
+
+test('reverse spread navigation reuses retained pages at end and partial close disposes late results', async () => {
+  const { cache, calls, finish } = rig();
+  cache.selectPresentation(volume, [6, 7], [4, 5]);
+  await finish(0);
+  await finish(1);
+  const retained = await finish(2);
+  cache.selectPresentation(volume, [4, 5], [6, 7, 2, 3]);
+  expect(cache.peek(volume.sessionId, volume.pages[4]!.id).status).toBe(
+    'ready',
+  );
+  expect(retained.disposed).toBe(false);
+  expect(calls.filter((c) => c.index === 4)).toHaveLength(1);
+  cache.clear();
+  expect(retained.disposed).toBe(true);
+  const late = await finish(3);
+  expect(late.disposed).toBe(true);
+  expect(cache.inspect().indices).toHaveLength(0);
+});

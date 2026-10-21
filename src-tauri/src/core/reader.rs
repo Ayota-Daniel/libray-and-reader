@@ -180,10 +180,20 @@ impl Reader {
         }
         Ok(())
     }
+    #[cfg(test)]
     pub fn progress(
         &self,
         session_id: &str,
         index: usize,
+        revision: u64,
+    ) -> Result<Option<super::library::Progress>> {
+        self.progress_range(session_id, index, index, revision)
+    }
+    pub fn progress_range(
+        &self,
+        session_id: &str,
+        index: usize,
+        last_index: usize,
         revision: u64,
     ) -> Result<Option<super::library::Progress>> {
         let mut state = self.state.lock().map_err(|_| expired())?;
@@ -192,7 +202,11 @@ impl Reader {
             .as_ref()
             .filter(|s| s.book.session_id == session_id)
             .ok_or_else(expired)?;
-        if index >= session.book.pages.len() {
+        if index >= session.book.pages.len()
+            || last_index < index
+            || last_index >= session.book.pages.len()
+            || last_index - index > 1
+        {
             return Err(Error::new(Code::InvalidPage, "progress index"));
         }
         if revision <= state.progress_revision || revision > 9_007_199_254_740_991 {
@@ -207,6 +221,7 @@ impl Reader {
                 index,
                 page_count: session.book.pages.len(),
                 at: super::library::timestamp(),
+                completed: last_index + 1 == session.book.pages.len(),
             });
         state.progress_revision = revision;
         Ok(result)

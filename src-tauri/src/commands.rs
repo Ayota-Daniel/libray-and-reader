@@ -208,9 +208,15 @@ pub fn record_progress(
     session_id: String,
     page_index: usize,
     revision: u64,
+    last_page_index: Option<usize>,
 ) -> CommandResult<()> {
     authorize(&window)?;
-    if let Some(progress) = reader.progress(&session_id, page_index, revision)? {
+    if let Some(progress) = reader.progress_range(
+        &session_id,
+        page_index,
+        last_page_index.unwrap_or(page_index),
+        revision,
+    )? {
         library.record(progress)?;
     }
     Ok(())

@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
 import type { ReaderModel } from '../features/reader/useReader';
-import { usePage } from '../features/reader/usePage';
+import { usePresentation } from '../features/reader/usePage';
 import { navigationDelta } from '../features/reader/keyboard';
 import { ReaderPresentation } from '../features/reader/ReaderPresentation';
 import { ReaderNavigation } from '../features/reader/ReaderNavigation';
 export function ReaderScreen({ reader }: { reader: ReaderModel }) {
   const { controller, snapshot } = reader;
   const { book, pageIndex, opening, closing, error } = snapshot;
-  const page = usePage(controller, book?.sessionId, book?.pages[pageIndex]?.id);
+  const slots = usePresentation(controller);
   useEffect(() => {
     const navigate = (event: KeyboardEvent) => {
       const delta = navigationDelta(
@@ -54,14 +54,15 @@ export function ReaderScreen({ reader }: { reader: ReaderModel }) {
         {error && <p role="alert">{error.message}</p>}
       </header>
       <ReaderPresentation
-        key={`${book?.sessionId}:${pageIndex}`}
+        key={`${book?.sessionId}:${snapshot.mode}:${snapshot.coverAlone}:${snapshot.group.join(',')}`}
         reader={reader}
-        page={page}
-        number={pageIndex + 1}
+        slots={slots}
       />
       <ReaderNavigation
         direction={reader.direction}
         state={{ pageCount: book?.pages.length ?? 0, pageIndex }}
+        group={snapshot.group}
+        jump={controller.jump}
         previous={() => controller.step(-1)}
         next={() => controller.step(1)}
       />

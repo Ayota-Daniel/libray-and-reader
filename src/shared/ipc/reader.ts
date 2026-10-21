@@ -89,8 +89,13 @@ export const readerApi: ReaderApi = {
     );
     return session ?? invalidResponse();
   },
-  recordProgress: (sessionId, pageIndex, revision) =>
-    emptyCommand('record_progress', { sessionId, pageIndex, revision }),
+  recordProgress: (sessionId, pageIndex, revision, lastPageIndex) =>
+    emptyCommand('record_progress', {
+      sessionId,
+      pageIndex,
+      revision,
+      lastPageIndex: lastPageIndex ?? pageIndex,
+    }),
   flushProgress: () => emptyCommand('flush_progress', {}),
   async beginOpen() {
     return parseId(await desktopInvoke('begin_open'));

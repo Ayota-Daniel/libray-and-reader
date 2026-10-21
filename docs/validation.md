@@ -1,6 +1,6 @@
-# V0.5 validation
+# V0.6 validation
 
-V0.5 base inspected: clean local `4b74c5c` (V0.3 && V0.4), following `7f9ce19`
+Historical V0.5 base inspected: clean local `4b74c5c` (V0.3 && V0.4), following `7f9ce19`
 (V0.2), repository `Ayota-Daniel/libray-and-reader`. Existing implementation and
 validation procedures were retained.
 Existing configuration was preserved. The old V0.1 note about an absent Git
@@ -10,22 +10,22 @@ Linux tools: Bun 1.4.3, Rust/Cargo 1.99.1. No Windows/macOS validation occurred.
 
 ## Automated checks
 
-V0.5 final run: 2026-10-21. All checks below passed. The release build includes
+V0.6 final run: 2026-10-21. Base: clean committed V0.5 `7e7b781`. All checks below passed. The release build includes
 the strict application TypeScript/Vite build. Rust tests and Clippy also succeeded
-with `--locked --offline`; the Linux release build completed in 59.42 seconds.
+with `--locked --offline`; the Linux release executable was rebuilt for V0.6.
 
 | Command                                                                                   | Result                                              |
 | ----------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `bun install --frozen-lockfile`                                                           | Passed, no lockfile changes needed                  |
 | `bun run format:check`                                                                    | Passed (Prettier + rustfmt)                         |
 | `bun run lint`                                                                            | Passed, warnings treated as errors                  |
-| `bun test`                                                                                | 50 tests passed, 312 assertions                     |
+| `bun test`                                                                                | 69 tests passed, 441 assertions                     |
 | `bun run typecheck:tests`                                                                 | Passed, includes source and all tests               |
 | `bun run build:web`                                                                       | Passed, strict TypeScript and Vite production build |
-| `cargo test --manifest-path src-tauri/Cargo.toml --locked`                                | 31 Rust tests passed                                |
+| `cargo test --manifest-path src-tauri/Cargo.toml --locked`                                | 32 Rust tests passed                                |
 | `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings` | Passed                                              |
 | `bun run build`                                                                           | Passed, Linux release executable produced           |
-| `python3 tools/make-fixtures.py /tmp/manga-reader-v05`                                    | Eight synthetic fixtures generated successfully     |
+| `python3 tools/make-fixtures.py /tmp/manga-reader-v06`                                    | Ten synthetic fixtures generated successfully       |
 
 Rust tests use an independent small ZIP writer to exercise Stored/Deflate,
 subfolders, JPEG/PNG, duplicate names, natural/case/zero/Unicode ordering, empty and
@@ -349,3 +349,115 @@ Limits: canonical-path identity only; no relink/watch/search/series, placeholder
 covers, one-page completion remains reading, no persisted display preferences,
 and abrupt termination may lose unflushed progress. Native visual acceptance and
 Windows/macOS testing remain outstanding.
+
+## V0.6 — Spread Reader & Direct Page Navigation
+
+Base inspected: clean committed V0.5 `7e7b781`. Git history, migrations, Reader,
+PageCache, architecture and prior validation were inspected before implementation.
+No baseline commit was necessary. The V0.6 working changes are not committed or
+pushed. No runtime dependency, CSP permission, archive limit or SQLite migration
+was added. Only the application version changes in Cargo.lock; user_version is 1.
+
+### Automated coverage
+
+The original 50 frontend tests remain. New deterministic tests cover Single/Double,
+even/odd counts, cover isolation, wide pages at all positions and consecutive wide
+pages, ratio threshold, LTR/RTL placement, containment across mode switches,
+resume, whole-number input validation, group navigation, canonical completion and
+backward progress, one-page image-load completion, lazy regrouping around requested
+pages, active-set pinning, count/memory bounds, overload without speculation,
+foreground retry, reverse retained-resource reuse, partial failures, stale slots,
+replacement/close and screen detach. React tests cover controls and form submission,
+keyboard exclusion while typing, composed geometry/fit/zoom/resize and resource
+reuse. Existing pan and stale-resource tests remain. Happy DOM simulates geometry;
+it does not prove native visual correctness or physical pointer behavior.
+
+A new Rust test verifies canonical anchor plus two-page completion, rejects invalid
+spans, checks backward progress and confirms schema version remains 1. Existing
+SQLite, archive, cancellation, resource and migration tests remain. No test uses
+the developer's actual Library database. Generated spread fixtures are synthetic.
+
+### V0.6 native manual acceptance — not performed
+
+Generate ten fixtures (the prior eight plus `spread-odd.cbz` and `spread-wide.cbz`).
+Use a fresh directory for an empty test library, keeping the same data directory
+for restarts. Run the release binary, not the browser-only preview:
+
+```sh
+python3 tools/make-fixtures.py /tmp/manga-reader-v06
+XDG_DATA_HOME=/tmp/manga-reader-v06-data GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 src-tauri/target/release/manga-reader
+```
+
+1. Repeat V0.2–V0.5 native scenarios above. In Single, verify normal Previous/Next,
+   first/last bounds, cancellation, missing source and temporary Open CBZ semantics.
+   V0.5's old one-page limitation is superseded: successful image presentation now
+   completes a one-page Library book; importing it alone does not.
+2. Temporarily open `cache.cbz` (eight portrait pages). Choose Double, Cover alone
+   off: verify `1–2`, `3–4`, `5–6`, `7–8`, correct numerals and endpoint buttons.
+3. Open `spread-odd.cbz` (seven portraits): final page 7 stands alone. Toggle Cover
+   alone on/off in both books: page 1 isolates when enabled, with correct odd tail.
+4. Open `spread-wide.cbz`: pages 1, 4, 5 and 8 are wide; each must display alone.
+   The resolved sequence without cover is `[1],[2,3],[4],[5],[6,7],[8]`. Page 3 has
+   a different height. Verify no stretching and vertical centering of paired pages.
+5. In LTR, page 2 is left and 3 right; in RTL they swap. Next/Previous keeps canonical
+   order; right advances in LTR, left advances in RTL. Indicator remains `2–3`.
+6. Jump to first, middle and final pages in both modes. A jump to either member of
+   a pair selects that group. Try blank, text, 0, negative, fraction and beyond-end:
+   an accessible error appears without moving. Arrow keys in the input never turn.
+7. Switch Single → Double while on the second page of a candidate pair; the group
+   must contain it. Double → Single selects the lower canonical index. Toggle cover
+   during reading. No source reopen/picker should occur; transforms reset.
+8. On `viewport.cbz` and portrait pairs, test all four fit modes, zoom limits/reset,
+   scroll/pointer pan and window resize. The spread uses one common scale, preserves
+   both aspect ratios and remains reachable at its edges. No image reacquisition
+   should occur from settings alone; use dev tooling if available.
+9. Navigate forward/back and rapidly through several groups. Confirm the latest
+   indicator/images match; a late old slot never joins the current group. Preloaded
+   pages should avoid an archive read, though WebView image decode can still load.
+10. Use `corrupt-middle.cbz` in Double: retain the valid slot and show a contained
+    error plus Retry for the corrupt page. Retry must not discard the good resource.
+    Navigate past it; failed speculation must not overwrite active-page state.
+11. Add a valid book to Library, read in Double, close normally immediately after
+    a turn and restart with the same data directory. Mode defaults to Single;
+    reopening resumes the lowest canonical index of the prior spread. Switching
+    back to Double includes that page. Reaching the final group completes it;
+    navigating back restores Reading. Confirm a valid one-page book completes only
+    once its image has actually appeared.
+12. Close/replace during loading, cancel or fail replacement, visit other screens
+    and return, and remove/restore a synthetic source externally. Check cleanup,
+    preserved session on failure and recoverable missing-file behavior as before.
+13. With two large portrait pages within the native limits, verify both remain
+    readable while speculative retention decreases. Automated ownership tests prove
+    resource bounds; process RSS alone is not evidence of those bounds.
+
+Record actual platform/backend, observations and diagnostics. Native observation
+and dialog control are unavailable in this agent session. No native visual/manual
+acceptance is claimed. The earlier Wayland/GDK protocol error remains a separate
+host issue; the process-local fallback does not establish rendering correctness.
+
+### V0.6 changed files and limits
+
+- New planner: `src/features/reader/presentation.ts`; tests:
+  `tests/presentation.test.ts`.
+- Reader state/cache/UI: `controller.ts`, `pageCache.ts`, `usePage.ts`, `model.ts`,
+  `progress.ts`, `ReaderPresentation.tsx`, `ReaderViewport.tsx`,
+  `ReaderNavigation.tsx`, `src/screens/ReaderScreen.tsx`, `src/shared/ipc/reader.ts`,
+  `src/app/styles.css`. Existing fit/input/source abstractions are retained.
+- Native progress span: `src-tauri/src/commands.rs`, `core/reader.rs`,
+  `core/library.rs`, `core/library/repository.rs`, `core/library/tests.rs`.
+- Tests/fixtures: `tests/reader-ui.test.tsx`, `tests/page-cache.test.ts`,
+  `tools/make-fixtures.py`.
+- Versions/docs: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`,
+  `src-tauri/tauri.conf.json`, `src/app/App.tsx`, README and architecture/validation.
+
+Limits: orientation is an aspect-ratio heuristic discovered lazily, not a complete
+upfront book map. Pairing can change as earlier wide pages are discovered. No split,
+continuous mode, transitions, covers, preference persistence or disk image cache.
+Three resource slots and normal 64 MiB estimated budget remain; two active pages
+may use up to 96,000,000 estimated bytes, with speculation skipped, and acquisition
+peak stays below 110 MiB. These are not WebView RSS guarantees. Native Linux visual
+acceptance and Windows/macOS testing remain outstanding.
+
+Exact recommended V0.7: complete native acceptance, then bounded, regenerable
+Library cover thumbnails, stored outside SQLite/source archives and served through
+opaque identifiers. No V0.7 work has been started.

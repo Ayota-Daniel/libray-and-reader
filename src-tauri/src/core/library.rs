@@ -43,6 +43,7 @@ pub struct Progress {
     pub index: usize,
     pub page_count: usize,
     pub at: i64,
+    pub completed: bool,
 }
 pub struct ImportResult {
     pub title: String,

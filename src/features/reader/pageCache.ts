@@ -25,7 +25,8 @@ const cost = (resource: PageResource) => resource.width * resource.height * 4;
 // One owner for encoded resources. No viewport state and no physical input mapping.
 export class PageCache {
   private book: ReadingSession | null = null;
-  private active = 0;
+  private active: readonly number[] = [0];
+  private wanted: readonly number[] = [];
   private entries = new Map<number, Entry>();
   private running: { entry: Entry; abort: AbortController } | null = null;
   private listeners = new Set<() => void>();
@@ -35,6 +36,11 @@ export class PageCache {
   constructor(
     private api: ReaderApi,
     private revision: () => number,
+    private metadata?: (
+      sessionId: string,
+      index: number,
+      resource: PageResource | null,
+    ) => void,
   ) {}
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -81,33 +87,57 @@ export class PageCache {
     );
   }
   private priorities() {
-    return [this.active, this.active + 1, this.active - 1].filter(
-      (i) => i >= 0 && i < (this.book?.pages.length ?? 0),
-    );
+    return this.wanted;
   }
   select(book: ReadingSession | null, index: number) {
+    this.selectPresentation(book, [index], [index + 1, index - 1]);
+  }
+  selectPresentation(
+    book: ReadingSession | null,
+    active: readonly number[],
+    neighbors: readonly number[],
+  ) {
     if (this.stopped) return;
     const changed =
-      this.book?.sessionId !== book?.sessionId || this.active !== index;
+      this.book?.sessionId !== book?.sessionId ||
+      this.active.join(',') !== active.join(',');
     if (this.book?.sessionId !== book?.sessionId) this.clear();
     this.book = book;
-    this.active = index;
-    const wanted = this.priorities();
-    for (const entry of this.entries.values())
-      if (!wanted.includes(entry.index)) this.evict(entry);
-    const active = this.entries.get(index);
-    if (changed && active && (active.speculativeFailure || active.skipped))
-      this.evict(active);
-    // Explicit navigation preempts speculation unless that very request is the target.
+    this.active = active.slice(0, 2);
+    this.wanted = [...new Set([...this.active, ...neighbors])]
+      .filter((i) => i >= 0 && i < (book?.pages.length ?? 0))
+      .slice(0, CACHE_LIMIT);
+    for (const entry of this.entries.values()) {
+      if (
+        !this.wanted.includes(entry.index) ||
+        (changed &&
+          this.active.includes(entry.index) &&
+          (entry.speculativeFailure || entry.skipped))
+      )
+        this.evict(entry);
+    }
     if (
       this.running &&
-      this.running.entry.index !== index &&
-      this.entries.get(index)?.state.status !== 'ready'
+      !this.active.includes(this.running.entry.index) &&
+      this.active.some((i) => this.entries.get(i)?.state.status !== 'ready')
     )
       this.evict(this.running.entry);
     this.trim();
     this.publish();
     this.pump();
+  }
+  retry(index: number) {
+    const entry = this.entries.get(index);
+    if (
+      this.active.includes(index) &&
+      (entry?.state.status === 'error' || entry?.state.status === 'ready')
+    ) {
+      this.evict(entry);
+      if (this.running && !this.active.includes(this.running.entry.index))
+        this.evict(this.running.entry);
+      this.publish();
+      this.pump();
+    }
   }
   private evict(entry: Entry) {
     if (this.entries.get(entry.index) !== entry) return;
@@ -116,9 +146,9 @@ export class PageCache {
     if (entry.state.status === 'ready') entry.state.resource.dispose();
   }
   private trim() {
-    for (const index of this.priorities().reverse()) {
+    for (const index of [...this.priorities()].reverse()) {
       if (this.bytes() <= CACHE_BYTES) break;
-      if (index === this.active) continue;
+      if (this.active.includes(index)) continue;
       const entry = this.entries.get(index);
       if (entry?.state.status === 'ready') {
         entry.state.resource.dispose();
@@ -131,6 +161,7 @@ export class PageCache {
     if (this.stopped || !this.book || this.running) return;
     const index = this.priorities().find((i) => !this.entries.has(i));
     if (index === undefined || this.entries.size >= CACHE_LIMIT) return;
+    if (!this.active.includes(index) && this.bytes() >= CACHE_BYTES) return;
     const entry: Entry = { index, state: loading };
     this.entries.set(index, entry);
     const abort = new AbortController();
@@ -155,6 +186,7 @@ export class PageCache {
             return;
           }
           entry.state = { status: 'ready', resource };
+          this.metadata?.(book.sessionId, index, resource);
           this.trim();
         },
         (error) => {
@@ -164,7 +196,8 @@ export class PageCache {
             this.book === book
           ) {
             entry.state = { status: 'error', error: failure(error) };
-            entry.speculativeFailure = index !== this.active;
+            this.metadata?.(book.sessionId, index, null);
+            entry.speculativeFailure = !this.active.includes(index);
           }
         },
       )

@@ -1,8 +1,10 @@
-# V0.5 architecture
+# V0.6 architecture
 
 One React application, one Rust crate, Tauri 2. Rust-owned SQLite persists Library
 metadata and logical reading progress. Reader sessions, page tickets, image caches
-and display preferences remain transient. Open CBZ is temporary; Add Books is a
+and display preferences remain transient. V0.6 adds Single/Double presentation
+groups and direct page navigation; its detailed section below supersedes the
+historical single-page presentation/cache descriptions. Open CBZ is temporary; Add Books is a
 persistent import. Both opening routes use the same Reader and PageCache.
 
 ## Ownership
@@ -437,3 +439,126 @@ and source comics, with opaque delivery. No V0.6 implementation is included.
 Preferences, page bytes and cache resources are not persisted. Existing V0.4 cache
 bounds and cleanup remain unchanged. There is no series model, relinking, cloud
 sync, disk image cache, new format or immersive bookshelf.
+
+## V0.6 canonical pages and presentation groups
+
+V0.6 supersedes the single-active-page details above; source order, archive limits,
+opaque identities, native worker admission and SQLite schema remain unchanged.
+`features/reader/presentation.ts` is the pure planner. It groups canonical indices
+into one or two pages. Single gives `[0],[1],…`; Double gives `[0,1],[2,3],…`.
+Cover alone isolates zero and pairs from one. Odd tails are alone, never padded
+with a manufactured page. `ReaderController` owns mode (Single default), cover
+isolation (off default), requested canonical index and current group. Settings
+survive screen changes and source replacement, but are not persisted.
+
+### Dimensions and conservative wide classification
+
+`width / height >= 1.2` means wide, in exactly one planner helper. Wide pages stand
+alone and reset subsequent pairing. This is an aspect-ratio heuristic, not panel
+analysis or automatic splitting. Dimensions reuse validated native page resources;
+there is no extra decode, whole-book scan or new native metadata command.
+
+Dimensions are discovered lazily through the existing foreground/preload path.
+Unknown pages provisionally pair; a Double presentation waits until each candidate
+has dimensions or a terminal acquisition error before rendering its slots. A
+failed unknown page is provisionally treated as normal so its error and successful
+neighbor can display; a successful retry may subsequently classify it as wide.
+The controller retains only known/wide index sets (at most 10,000 indices each),
+not image resources. They survive cache eviction and screen changes and clear on
+successful session replacement. New metadata replans around the **requested
+canonical page**, including when the second candidate proves to be wide. It never
+pairs a known wide page. Discovering an earlier wide page can change later pairing;
+a distant jump does not scan all intervening pages. This incremental planning is
+an explicit V0.6 limitation, avoiding a slow unbounded opening pass. Metadata is
+session-local, so a newly reopened source starts classification again.
+
+### Direction, navigation, progress and completion
+
+Grouping is direction-independent. Only the viewport reverses a group's visual
+slots for RTL: `[12,13]` becomes left 13/right 12. Physical arrows retain the
+existing mapping to logical Previous/Next; those operations now move by group.
+Mode/cover changes do not reopen the source. Single → Double contains the requested
+page; Double → Single chooses the group's lowest canonical index, irrespective of
+visual direction. Cover changes preserve containment of the requested page.
+
+The compact Go to page form accepts whole decimal numbers from 1 through the page
+count and maps them to zero-based indices. Blank, nonnumeric, fractional, signed,
+zero, negative and out-of-range values show a validation error and leave the group
+unchanged. In Double it selects the group containing the requested page. The
+indicator uses canonical order (`126–127 / 238`), even in RTL. Typing in the input
+does not trigger Reader arrow shortcuts. Controls use labels, semantic form/input/
+buttons, accessible validation and current-page status.
+
+Persisted progress is always the lowest canonical index in the current group.
+Navigation retains V0.5's logical-turn semantics (including a page with a display
+error), coalescing and flush guarantees. Metadata regrouping after navigation
+updates that anchor. Opening or changing settings alone sends no progress; once
+all slots of a final group have actually emitted successful image load events,
+that presentation also records completion. This fixes one-page books: acquisition
+or import alone does not complete them, successful display does. Duplicate load
+notifications and stale sessions are ignored. Backward navigation records an
+incomplete group and returns the book to Reading. Resume places the saved canonical
+index into the current mode's group; restart defaults to Single.
+
+`record_progress` now accepts an optional last canonical index, defaulting to the
+anchor for compatibility. Rust validates current session, increasing revision,
+range and a contiguous span of at most two pages. The span's endpoint determines
+completion, while only its anchor is stored as progress. The existing `completed`
+column is reused: **user_version stays 1, no migration or new table/column**.
+Rust has no knowledge of visual slots or RTL. Temporary CBZs still never save
+Library progress. The one native progress worker and latest-only queue are unchanged.
+
+### One composed viewport
+
+`usePresentation` selects one active set from the sole PageCache after the DOM
+commit. `ReaderPresentation` is keyed by session, mode, cover and canonical group,
+resetting zoom/pan on grouping changes. Slots read resources by session/page ID;
+late results cannot assemble an old page into a new group. After classification,
+slots may load progressively and show contained errors with Retry page buttons.
+Retry preserves successful neighboring resources. Speculative errors stay local.
+
+The composed intrinsic width is the sum of page widths plus an 8 CSS-pixel gutter;
+height is the maximum page height. A single common scale applies Fit Page/Width/
+Height/Original Size and zoom to both pages and the gutter. Pages retain their
+individual aspect ratios and intrinsic relative sizes, vertically centered. Errors
+without dimensions use a 320×480 placeholder for geometry only, not a fake source
+page. Pan operates on one scroll surface. Mode/cover/group/wide regrouping resets
+transforms; fit resets zoom, resize recomputes fit while retaining zoom and clamping
+pan. Settings, zoom, pan and resize do not acquire resources.
+
+### Active-set cache, preloading and bounds
+
+PageCache remains the only resource owner. All one or two active indices are
+pinned. Desired priority is current canonical group, then the next planned group,
+then the previous planned group, truncated to **three** unique canonical indices.
+Thus a normal pair has room for one page of the next spread; a lone wide/cover page
+can preload both pages of the next spread. Near the end, previous-group resources
+can be retained. Direction does not change this policy. Known wide metadata feeds
+the same planner used for navigation; unknown future pages remain provisional.
+
+There is one frontend acquisition, one native page worker and no growing queue.
+An uncached foreground set/retry cancels unrelated speculation; work must settle
+before another acquisition starts. A useful in-flight target is promoted. All
+active resources survive eviction; speculative failures/budget skips own no bytes.
+Close, replacement, detach and stale success disposal retain V0.4 ownership rules.
+
+Bounds:
+
+- Three resource/acquisition slots maximum, unchanged from V0.4/V0.5.
+- Normal estimated RGBA retention budget remains 64 MiB.
+- Two active maximum-sized pages may exceed this target: at most 24,000,000 pixels
+  or **96,000,000 bytes (~91.6 MiB)** combined. They remain readable and speculation
+  is skipped. The budget exception is only for active pages, never their neighbors.
+- A single acquisition can temporarily add at most 48,000,000 estimated bytes to
+  a normal-budget working set before trimming: **under 110 MiB** estimated peak.
+  Once the active set exceeds 64 MiB, no speculative acquisition starts. A new
+  active acquisition alongside one maximum-sized active page stays below that peak.
+- Encoded payloads remain at most three × 24 MiB. At most two rendered images,
+  instead of one, are necessary for Double. Native decoding/ticket limits do not
+  change. Browser allocator, decode, transport and compositor overhead still mean
+  these are ownership/payload estimates, not a process/GPU RSS guarantee.
+
+No disk cache, preference persistence, source splitting, transition/animation,
+continuous mode, thumbnails, new format or series model is introduced. Native
+visual acceptance remains outstanding. Recommended V0.7: complete that acceptance,
+then bounded regenerable Library cover thumbnails with separate derived storage.

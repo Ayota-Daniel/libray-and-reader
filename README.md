@@ -1,11 +1,12 @@
 # Manga Reader
 
-V0.5 local-first desktop comic/scan/manga reader: Tauri 2, React, strict TypeScript,
+V0.6 local-first desktop comic/scan/manga reader: Tauri 2, React, strict TypeScript,
 Vite, Bun and one Rust crate. Linux is the current build platform. Windows/macOS
 compatibility is preserved in the design but has not been validated.
 
 Reader can select one CBZ with a native picker, index its pages, display a single
-page on demand, navigate with buttons or LTR/RTL arrow keys, replace it and close it.
+page or double-page spread on demand, navigate with buttons or LTR/RTL arrow keys,
+jump to a page number, replace it and close it.
 Cancelling or failing a replacement preserves the current book. Switching screens
 preserves the session/page. **Open CBZ is temporary; Add Books imports persistently.**
 Library supports multiple native CBZ selections, duplicate detection, availability
@@ -19,8 +20,9 @@ Reader offers Fit Page, Fit Width, Fit Height and Original Size, bounded zoom
 (25–400% of the chosen fit), reset and pointer-drag panning for oversized pages.
 Direction/fit survive screen changes; zoom and pan reset on page changes.
 These controls do not reload the current page. Preferences are not persisted.
-V0.4 preloads adjacent pages in a memory-only, three-page working set with a
-64 MiB decoded-size estimate budget. Cached navigation avoids a new archive read.
+V0.6 preloads nearby presentation groups in a memory-only, three-resource working
+set with a 64 MiB decoded-size estimate target. Up to two active pages are pinned;
+a large active pair may use up to 96,000,000 estimated bytes, with speculation skipped. Cached navigation avoids a new archive read.
 Large pages reduce neighbor retention; leaving Reader clears the cache.
 See [architecture](docs/architecture.md) for precise limits, ordering, supported
 ZIP variants, source/session contracts and resource ownership.
@@ -81,10 +83,10 @@ Prettier/rustfmt. Tests are statically checked via `tsconfig.tests.json`; Bun al
 does not typecheck them. Frontend interaction tests use Happy DOM and React's act.
 Rust tests generate tiny ZIP/image fixtures in temporary files and remove them.
 
-For manual native testing, Python 3's standard library creates eight synthetic archives:
+For manual native testing, Python 3's standard library creates ten synthetic archives:
 
 ```sh
-python3 tools/make-fixtures.py /tmp/manga-reader-v05
+python3 tools/make-fixtures.py /tmp/manga-reader-v06
 ```
 
 No downloads or real manga are needed. Follow the native release scenario in
@@ -159,9 +161,26 @@ Page turns queue bounded, coalesced progress writes. Switching/closing books and
 normal window closure flush pending progress. A write failure is visible and can
 prevent closure until retry succeeds; force-killing the app can lose unflushed
 progress. Opening alone never marks completion; navigating onto the last page
-does, and navigating back clears completion. Single-page books therefore stay
-reading. Reader settings and image caches remain memory-only.
+does, and navigating back clears completion. Single-page books become completed after their image is successfully presented. Reader settings and image caches remain memory-only.
 
 See the isolated-database V0.5 manual scenario in [validation](docs/validation.md).
-Native visual acceptance remains outstanding. V0.6 should add bounded, regenerable
+Native visual acceptance remains outstanding. V0.7 should add bounded, regenerable
 cover thumbnails after completing that acceptance; it has not been started.
+
+## V0.6 presentation
+
+Choose Single or Double in Reader. Double pairs canonical pages; Cover alone
+isolates the first page. Wide scans (width/height ≥ 1.2) display alone. RTL reverses
+visual placement, never source order or progress identity. Previous/Next moves by
+presentation group, and Go to page accepts a 1-based page number. Fit/zoom/pan apply
+to the entire spread with undistorted, vertically centered pages.
+
+Dimensions are learned lazily from normal safe page loads. A pair waits for
+classification before display; newly discovered wide pages can adjust grouping
+around the requested page. Distant jumps do not scan earlier unseen pages, so
+grouping may evolve as dimensions become known. A failed slot offers Retry while
+its successful neighbor remains usable. No splitting or transitions are included.
+
+Progress stores the lowest canonical page of a spread. The existing completion
+column records whether its final page reaches the book's end; no database migration
+is needed. Mode and cover preferences are session-only. V0.6 adds no dependencies.

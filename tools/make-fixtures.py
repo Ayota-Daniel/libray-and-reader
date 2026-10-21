@@ -65,7 +65,13 @@ def main():
                                       ("page2.png", png(2, (40, 100, 70), 2400, 1600), 8)])
     write_cbz(output / "cache.cbz", [(f"page{i}.png", png(i, (30 + i * 15, 70, 100)), 8)
                                     for i in range(1, 9)])
-    print(f"Created eight synthetic fixtures in {output.resolve()}")
+    write_cbz(output / "spread-odd.cbz", [(f"page{i}.png", png(i, (30 + i * 15, 70, 100)), 8)
+                                         for i in range(1, 8)])
+    write_cbz(output / "spread-wide.cbz", [(f"page{i}.png", png(i, (30 + i * 15, 70, 100),
+                                          640 if i in (1, 4, 5, 8) else 240,
+                                          360 if i != 3 else 400), 8)
+                                          for i in range(1, 9)])
+    print(f"Created ten synthetic fixtures in {output.resolve()}")
 
 
 if __name__ == "__main__":

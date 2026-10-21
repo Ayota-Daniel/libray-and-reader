@@ -26,6 +26,7 @@ export interface ReaderApi {
     sessionId: string,
     pageIndex: number,
     revision: number,
+    lastPageIndex?: number,
   ): Promise<void>;
   flushProgress?(): Promise<void>;
   openSelected(operationId: string): Promise<ReadingSession | null>;

@@ -227,7 +227,7 @@ impl Repository {
             return Err(db_error("invalid progress"));
         }
         // A removed record is intentionally not resurrected by late progress.
-        self.connection.execute("UPDATE books SET progress_index=?,progress_count=?,read_at=?,completed=? WHERE id=?",params![p.index as i64,p.page_count as i64,p.at,p.index+1==p.page_count,p.book_id]).map_err(db_error)?;
+        self.connection.execute("UPDATE books SET progress_index=?,progress_count=?,read_at=?,completed=? WHERE id=?",params![p.index as i64,p.page_count as i64,p.at,p.completed,p.book_id]).map_err(db_error)?;
         Ok(())
     }
     pub fn remove(&self, id: &str) -> Result<()> {

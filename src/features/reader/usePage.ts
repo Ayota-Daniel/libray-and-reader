@@ -2,21 +2,24 @@ import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react';
 import type { ReaderController } from './controller';
 export type { PageState } from './pageCache';
 
-export function usePage(
-  controller: ReaderController,
-  sessionId: string | undefined,
-  pageId: string | undefined,
-) {
+export function usePresentation(controller: ReaderController) {
   const cache = controller.pages;
-  useSyncExternalStore(cache.subscribe, cache.getSnapshot);
+  const version = useSyncExternalStore(cache.subscribe, cache.getSnapshot);
+  const { book, group, mode, coverAlone, planRevision } =
+    controller.getSnapshot();
+  const identity = group.join(',');
   useEffect(() => {
     const lease = cache.attach();
     return () => cache.detach(lease);
   }, [cache]);
   useLayoutEffect(() => {
-    const { book, pageIndex } = controller.getSnapshot();
-    cache.select(book, pageIndex);
-  }, [cache, controller, sessionId, pageId]);
-  // Read the requested identity, never the previous selection during an effect gap.
-  return cache.peek(sessionId, pageId);
+    const plan = controller.cachePlan();
+    cache.selectPresentation(book, plan.active, plan.neighbors);
+  }, [cache, controller, book, identity, mode, coverAlone, planRevision]);
+  // Version triggers re-reading only; selection must not publish in a render loop.
+  void version;
+  return group.map((index) => ({
+    index,
+    page: cache.peek(book?.sessionId, book?.pages[index]?.id),
+  }));
 }

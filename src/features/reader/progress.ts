@@ -1,7 +1,11 @@
 import type { ReaderApi } from './model';
 // One IPC in flight plus one replaceable latest update. No page-turn waits for SQL.
 export class ProgressQueue {
-  private pending: { sessionId: string; pageIndex: number } | null = null;
+  private pending: {
+    sessionId: string;
+    pageIndex: number;
+    lastPageIndex: number | undefined;
+  } | null = null;
   private running: Promise<void> | null = null;
   private error: unknown = null;
   private revision = 0;
@@ -11,8 +15,8 @@ export class ProgressQueue {
     private api: ReaderApi,
     private report: (error: unknown) => void,
   ) {}
-  record(sessionId: string, pageIndex: number) {
-    this.pending = { sessionId, pageIndex };
+  record(sessionId: string, pageIndex: number, lastPageIndex?: number) {
+    this.pending = { sessionId, pageIndex, lastPageIndex };
     this.dirty = true;
     this.pump();
   }
@@ -22,7 +26,12 @@ export class ProgressQueue {
     const update = this.pending;
     this.pending = null;
     this.running = this.api
-      .recordProgress(update.sessionId, update.pageIndex, ++this.revision)
+      .recordProgress(
+        update.sessionId,
+        update.pageIndex,
+        ++this.revision,
+        update.lastPageIndex,
+      )
       .then(
         () => {
           this.error = null;

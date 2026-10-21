@@ -283,3 +283,23 @@ p {
   place-items: center;
   border-radius: 6px;
 }
+
+.spread-layout {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+.page-slot {
+  flex: none;
+}
+.reader-navigation {
+  flex-wrap: wrap;
+}
+.reader-navigation form {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.reader-navigation input {
+  width: 5rem;
+}

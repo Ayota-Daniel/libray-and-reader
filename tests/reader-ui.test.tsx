@@ -366,3 +366,226 @@ for (const direction of ['ltr', 'rtl']) {
     );
   });
 }
+
+async function jump(value: string) {
+  const input = host.querySelector<HTMLInputElement>(
+    'input[aria-label="Go to page"]',
+  )!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    )!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => {
+    input
+      .closest('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+}
+function spreadApi(count = 6) {
+  const fake = fakeApi();
+  let opens = 0;
+  const volume = {
+    ...book,
+    pages: Array.from({ length: count }, (_, i) => ({ id: String(i) })),
+  };
+  fake.api.openSelected = async () => {
+    opens++;
+    return volume;
+  };
+  return { ...fake, volume, opens: () => opens };
+}
+test('Double UI: ranges, LTR/RTL placement and keys, jumps, cover and mode switches share one session', async () => {
+  const { api, opens } = spreadApi();
+  await mount(api);
+  await click('Reader');
+  await click('Open CBZ');
+  await setting(2, 'double');
+  expect(host.textContent).toContain('1–2 / 6');
+  expect([...host.querySelectorAll('img')].map((i) => i.alt)).toEqual([
+    'Page 1',
+    'Page 2',
+  ]);
+  await key('ArrowRight');
+  expect(host.textContent).toContain('3–4 / 6');
+  await setting(0, 'rtl');
+  expect([...host.querySelectorAll('img')].map((i) => i.alt)).toEqual([
+    'Page 4',
+    'Page 3',
+  ]);
+  await key('ArrowLeft');
+  expect(host.textContent).toContain('5–6 / 6');
+  await key('ArrowRight');
+  expect(host.textContent).toContain('3–4 / 6');
+  await jump('6');
+  expect(host.textContent).toContain('5–6 / 6');
+  await jump('1');
+  expect(host.textContent).toContain('1–2 / 6');
+  await act(async () => {
+    host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
+  });
+  expect(host.textContent).toContain('1 / 6');
+  await click('Next page');
+  expect(host.textContent).toContain('2–3 / 6');
+  await setting(2, 'single');
+  expect(host.textContent).toContain('2 / 6');
+  await jump('6');
+  expect(host.textContent).toContain('6 / 6');
+  const input = host.querySelector('input[aria-label="Go to page"]')!;
+  await key('ArrowRight', input);
+  expect(host.textContent).toContain('6 / 6');
+  for (const invalid of ['', 'bad', '0', '-1', '7', '1.5']) {
+    await jump(invalid);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(host.textContent).toContain('6 / 6');
+  }
+  expect(opens()).toBe(1);
+});
+test('composed spread uses one fit/zoom/pan surface, preserves ratios and does not reacquire on settings/resize', async () => {
+  const { api } = spreadApi(2);
+  let loads = 0;
+  api.loadPage = async (_s, id) => {
+    loads++;
+    return {
+      ...resource(`blob:${id}`),
+      width: id === '0' ? 600 : 400,
+      height: id === '0' ? 1000 : 800,
+    };
+  };
+  await mount(api);
+  await click('Reader');
+  await click('Open CBZ');
+  await setting(2, 'double');
+  const viewport = host.querySelector<HTMLElement>('.page-scroll')!;
+  await act(async () => {
+    measureViewport(viewport, 1008, 1000);
+  });
+  const images = [...host.querySelectorAll('img')];
+  expect(images[0]!.style.width).toBe('600px');
+  expect(images[1]!.style.height).toBe('800px');
+  await setting(1, 'width');
+  expect(images[0]!.style.width).toBe('600px');
+  await setting(1, 'height');
+  expect(images[1]!.style.width).toBe('400px');
+  await setting(1, 'original');
+  await click('Zoom in');
+  expect(parseFloat(images[0]!.style.width)).toBeCloseTo(600 * Math.SQRT2);
+  await act(async () => {
+    measureViewport(viewport, 504, 500);
+  });
+  await click('Reset zoom');
+  await setting(1, 'page');
+  expect(images[0]!.style.width).toBe('300px');
+  expect(host.querySelectorAll('.page-scroll')).toHaveLength(1);
+  expect(loads).toBe(2);
+  expect(host.querySelector('img')).toBe(images[0]!);
+});
+test('wide scan resolves alone, errors remain per slot and retry preserves successful neighbor', async () => {
+  const { api } = spreadApi(4);
+  let fail = true;
+  api.loadPage = async (_s, id) => {
+    if (id === '1' && fail)
+      throw { code: 'corrupt_page', message: 'Broken slot' };
+    return {
+      ...resource(`blob:${id}`),
+      width: id === '2' ? 1600 : 600,
+      height: 1000,
+    };
+  };
+  await mount(api);
+  await click('Reader');
+  await click('Open CBZ');
+  await setting(2, 'double');
+  expect(host.textContent).toContain('Broken slot');
+  const first = host.querySelector('img');
+  expect(first?.alt).toBe('Page 1');
+  fail = false;
+  await click('Retry page 2');
+  expect(host.querySelector('img') === first).toBe(true);
+  expect([...host.querySelectorAll('img')].map((i) => i.alt)).toEqual([
+    'Page 1',
+    'Page 2',
+  ]);
+  await click('Next page');
+  expect(host.textContent).toContain('3 / 4');
+  expect(host.querySelectorAll('img')).toHaveLength(1);
+  await click('Next page');
+  expect(host.textContent).toContain('4 / 4');
+});
+test('one-page library completion is sent only after image load succeeds', async () => {
+  const { api } = spreadApi(1);
+  let writes = 0;
+  api.openSelected = async () => ({
+    ...book,
+    libraryBookId: '9'.repeat(32),
+    pages: [book.pages[0]!],
+  });
+  api.recordProgress = async () => {
+    writes++;
+  };
+  await mount(api);
+  await click('Reader');
+  await click('Open CBZ');
+  expect(writes).toBe(0);
+  const image = host.querySelector('img')!;
+  await act(async () => {
+    image.dispatchEvent(new Event('error'));
+  });
+  expect(writes).toBe(0);
+  await act(async () => {
+    image.dispatchEvent(new Event('load'));
+  });
+  expect(writes).toBe(1);
+});
+
+test('late spread slot cannot join a new group; replacement and leaving Reader release both slots', async () => {
+  const { api, volume } = spreadApi(6);
+  const pending = deferred<PageResource>();
+  const late = resource('blob:obsolete-slot');
+  const released: string[] = [];
+  api.loadPage = async (_s, id) => {
+    if (id === '1') return pending.promise;
+    const page = resource(`blob:${id}`);
+    page.dispose = () => {
+      released.push(id);
+    };
+    return page;
+  };
+  await mount(api);
+  await click('Reader');
+  await click('Open CBZ');
+  await setting(2, 'double');
+  expect(host.querySelectorAll('img')).toHaveLength(0); // unresolved pair is withheld
+  await click('Next page');
+  await click('Next page');
+  await act(async () => {
+    pending.resolve(late);
+    await pending.promise;
+  });
+  expect(late.disposed).toBe(true);
+  expect([...host.querySelectorAll('img')].map((i) => i.alt)).toEqual([
+    'Page 5',
+    'Page 6',
+  ]);
+  expect(host.querySelector('img[src="blob:obsolete-slot"]')).toBeNull();
+  await click('Home');
+  expect(released).toContain('4');
+  expect(released).toContain('5');
+  await click('Reader');
+  expect(host.textContent).toContain('5–6 / 6');
+  api.openSelected = async () => ({
+    ...volume,
+    sessionId: 'b'.repeat(32),
+    title: 'Second',
+    pages: [{ id: 'new0' }, { id: 'new1' }],
+  });
+  await click('Open CBZ');
+  expect(
+    [...host.querySelectorAll('img')].map((i) => i.getAttribute('src')),
+  ).toEqual(['blob:new0', 'blob:new1']);
+  await click('Close book');
+  expect(released).toContain('new0');
+  expect(released).toContain('new1');
+});

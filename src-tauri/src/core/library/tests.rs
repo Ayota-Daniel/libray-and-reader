@@ -198,6 +198,7 @@ fn write_failures_are_typed_retryable_and_do_not_replace_reader() {
             index: 1,
             page_count: 2,
             at: timestamp(),
+            completed: false,
         })
         .unwrap();
     assert_eq!(
@@ -220,6 +221,7 @@ fn write_failures_are_typed_retryable_and_do_not_replace_reader() {
             index: 0,
             page_count: 2,
             at: timestamp(),
+            completed: false,
         })
         .unwrap();
     library.flush().unwrap();
@@ -280,6 +282,7 @@ fn shutdown_flushes_the_latest_coalesced_progress() {
                 index,
                 page_count: 100,
                 at: timestamp(),
+                completed: index == 99,
             })
             .unwrap();
     }
@@ -332,4 +335,47 @@ fn failed_open_metadata_write_and_cancel_preserve_existing_reader() {
         ErrorCode::SessionExpired
     );
     assert!(library.list().unwrap()[0].last_opened_at.is_none());
+}
+
+#[test]
+fn canonical_spread_progress_keeps_anchor_and_completes_without_schema_change() {
+    let dir = Directory::new();
+    let library = Library::open(Ok(dir.db()));
+    library.import(vec![dir.cbz(4)]).unwrap();
+    let id = library.list().unwrap()[0].id.clone();
+    let reader = Arc::new(Reader::default());
+    let operation = reader.begin_open().unwrap();
+    let book = library
+        .open_book(&id, reader.start_open(&operation).unwrap())
+        .unwrap();
+    assert!(reader.progress_range(&book.session_id, 0, 3, 1).is_err());
+    assert!(reader.progress_range(&book.session_id, 2, 1, 1).is_err());
+    library
+        .record(
+            reader
+                .progress_range(&book.session_id, 2, 3, 1)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+    let saved = library.list().unwrap().remove(0);
+    assert_eq!(saved.last_page_index, Some(2));
+    assert_eq!(saved.status, "completed");
+    library
+        .record(
+            reader
+                .progress_range(&book.session_id, 0, 1, 2)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+    assert_eq!(library.list().unwrap()[0].status, "reading");
+    let version: i64 = library
+        .repository(|r| {
+            Ok(r.connection
+                .pragma_query_value(None, "user_version", |row| row.get(0))
+                .unwrap())
+        })
+        .unwrap();
+    assert_eq!(version, 1);
 }
