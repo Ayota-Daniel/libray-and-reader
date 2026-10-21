@@ -1,31 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { failure } from '../../shared/ipc/errors';
-import { listBooks } from '../../shared/ipc/library';
-import type { LibraryBook } from './model';
-
+import { libraryApi } from '../../shared/ipc/library';
+import type { LibraryApi, LibraryBook } from './model';
 type LibraryState =
   | { status: 'loading' }
   | { status: 'ready'; books: LibraryBook[] }
   | { status: 'error'; message: string };
-export function useLibrary(): LibraryState {
+const noRefresh = async () => {};
+export function useLibrary(
+  api: LibraryApi = libraryApi,
+  beforeRefresh: () => Promise<void> = noRefresh,
+) {
   const [state, setState] = useState<LibraryState>({ status: 'loading' });
+  const lifecycle = useRef({ revision: 0 });
+  const refresh = useCallback(async () => {
+    const current = ++lifecycle.current.revision;
+    try {
+      await beforeRefresh();
+      const books = await api.list();
+      if (current === lifecycle.current.revision)
+        setState({ status: 'ready', books });
+    } catch (error) {
+      if (current === lifecycle.current.revision)
+        setState({ status: 'error', message: failure(error).message });
+    }
+  }, [api, beforeRefresh]);
   useEffect(() => {
+    const state = lifecycle.current;
     let active = true;
-    void listBooks().then(
-      (books) => {
-        if (active) setState({ status: 'ready', books });
-      },
-      (error: unknown) => {
-        if (active)
-          setState({
-            status: 'error',
-            message: failure(error).message,
-          });
-      },
-    );
+    void Promise.resolve().then(() => {
+      if (active) return refresh();
+    });
     return () => {
       active = false;
+      ++state.revision;
     };
-  }, []);
-  return state;
+  }, [refresh]);
+  return { state, refresh };
 }

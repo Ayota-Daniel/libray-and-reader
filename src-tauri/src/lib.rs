@@ -9,6 +9,28 @@ pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(core::reader::Reader::default()))
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let path = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| {
+                    core::error::ReaderError::new(
+                        core::error::ErrorCode::PersistenceFailed,
+                        e.to_string(),
+                    )
+                })
+                .and_then(|dir| {
+                    std::fs::create_dir_all(&dir).map_err(|e| {
+                        core::error::ReaderError::new(
+                            core::error::ErrorCode::PersistenceFailed,
+                            e.to_string(),
+                        )
+                    })?;
+                    Ok(dir.join("library.sqlite3"))
+                });
+            app.manage(core::library::Library::open(path));
+            Ok(())
+        })
         .register_asynchronous_uri_scheme_protocol("page", |context, request, responder| {
             let reader = context
                 .app_handle()
@@ -23,11 +45,19 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
+                if let Err(error) = window.state::<Arc<core::library::Library>>().shutdown() {
+                    eprintln!("Persistence shutdown: {error}");
+                }
                 window.state::<Arc<core::reader::Reader>>().shutdown();
             }
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_books,
+            commands::add_books,
+            commands::remove_book,
+            commands::open_library_book,
+            commands::record_progress,
+            commands::flush_progress,
             commands::begin_open,
             commands::open_selected,
             commands::cancel_open,

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-add-books"
+description = "Enables the add_books command without any pre-configured scope."
+commands.allow = ["add_books"]
+
+[[permission]]
+identifier = "deny-add-books"
+description = "Denies the add_books command without any pre-configured scope."
+commands.deny = ["add_books"]

@@ -32,6 +32,8 @@ pub struct Book {
     pub session_id: String,
     pub title: String,
     pub pages: Vec<String>,
+    pub library_book_id: Option<String>,
+    pub initial_page_index: usize,
 }
 struct Session {
     book: Book,
@@ -54,6 +56,7 @@ struct State {
     opening: Option<Opening>,
     tickets: Vec<Ticket>,
     revision: u64,
+    progress_revision: u64,
 }
 
 // Short state locks only. Disk and decompression work never holds this mutex.
@@ -177,6 +180,37 @@ impl Reader {
         }
         Ok(())
     }
+    pub fn progress(
+        &self,
+        session_id: &str,
+        index: usize,
+        revision: u64,
+    ) -> Result<Option<super::library::Progress>> {
+        let mut state = self.state.lock().map_err(|_| expired())?;
+        let session = state
+            .session
+            .as_ref()
+            .filter(|s| s.book.session_id == session_id)
+            .ok_or_else(expired)?;
+        if index >= session.book.pages.len() {
+            return Err(Error::new(Code::InvalidPage, "progress index"));
+        }
+        if revision <= state.progress_revision || revision > 9_007_199_254_740_991 {
+            return Err(expired());
+        }
+        let result = session
+            .book
+            .library_book_id
+            .clone()
+            .map(|book_id| super::library::Progress {
+                book_id,
+                index,
+                page_count: session.book.pages.len(),
+                at: super::library::timestamp(),
+            });
+        state.progress_revision = revision;
+        Ok(result)
+    }
     // Admission happens before spawn_blocking: one running read, zero queued reads.
     pub fn prepare_read(&self, session_id: &str, ticket_id: &str) -> Result<ReadWork> {
         let state = self.state.lock().map_err(|_| expired())?;
@@ -232,13 +266,36 @@ impl OpenWork {
         self.commit(Box::new(source), title)
     }
     fn commit(&self, source: Box<dyn PageSource>, title: String) -> Result<Book> {
+        self.commit_session(source, title, None, 0, || Ok(()))
+    }
+    pub fn commit_library(
+        &self,
+        source: Box<dyn PageSource>,
+        title: String,
+        id: String,
+        index: usize,
+        before_commit: impl FnOnce() -> Result<()>,
+    ) -> Result<Book> {
+        self.commit_session(source, title, Some(id), index, before_commit)
+    }
+    fn commit_session(
+        &self,
+        source: Box<dyn PageSource>,
+        title: String,
+        library_book_id: Option<String>,
+        initial_page_index: usize,
+        before_commit: impl FnOnce() -> Result<()>,
+    ) -> Result<Book> {
         let mut state = self.reader.state.lock().map_err(|_| expired())?;
         if !self.is_current() || !state.opening.as_ref().is_some_and(|op| op.id == self.id) {
             return Err(expired());
         }
+        before_commit()?;
         let book = Book {
             session_id: opaque_id(),
             title,
+            library_book_id,
+            initial_page_index,
             pages: (0..source.page_count()).map(|_| opaque_id()).collect(),
         };
         if let Some(old) = state.session.take() {
@@ -246,6 +303,7 @@ impl OpenWork {
         }
         invalidate_tickets(&mut state);
         state.revision = 0;
+        state.progress_revision = 0;
         state.session = Some(Arc::new(Session {
             book: book.clone(),
             source: Mutex::new(source),

@@ -40,7 +40,19 @@ export function parseSession(value: unknown): ReadingSession | null {
       return invalidResponse();
     ids.add(page.id);
   }
+  const resume = 'initialPageIndex' in value ? value.initialPageIndex : 0;
+  const libraryId = 'libraryBookId' in value ? value.libraryBookId : null;
+  if (
+    typeof resume !== 'number' ||
+    !Number.isSafeInteger(resume) ||
+    resume < 0 ||
+    resume >= ids.size ||
+    (libraryId !== null && !isId(libraryId))
+  )
+    return invalidResponse();
   return {
+    ...(libraryId ? { libraryBookId: libraryId } : {}),
+    ...(resume ? { initialPageIndex: resume } : {}),
     sessionId: value.sessionId,
     title: value.title,
     pages: [...ids].map((id) => ({ id })),
@@ -71,6 +83,15 @@ function pause(signal: AbortSignal): Promise<void> {
 }
 
 export const readerApi: ReaderApi = {
+  async openLibrary(operationId, bookId) {
+    const session = parseSession(
+      await desktopInvoke('open_library_book', { operationId, bookId }),
+    );
+    return session ?? invalidResponse();
+  },
+  recordProgress: (sessionId, pageIndex, revision) =>
+    emptyCommand('record_progress', { sessionId, pageIndex, revision }),
+  flushProgress: () => emptyCommand('flush_progress', {}),
   async beginOpen() {
     return parseId(await desktopInvoke('begin_open'));
   },

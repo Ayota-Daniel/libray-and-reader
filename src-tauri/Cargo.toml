@@ -1,6 +1,6 @@
 [package]
 name = "manga-reader"
-version = "0.4.0"
+version = "0.5.0"
 description = "A local-first desktop comic and manga reader"
 edition = "2021"
 
@@ -20,3 +20,4 @@ uuid = { version = "1.28.0", default-features = false, features = ["v4"] }
 serde_json = "1.0.154"
 rawzip = "0.5.2"
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
+rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }

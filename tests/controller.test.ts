@@ -41,10 +41,14 @@ test('open, cancel picker, failed/successful replacement and close', async () =>
 test('close during an opening cancels and closes a late native success', async () => {
   const { api, closed, cancelled } = fakeApi();
   const pending = deferred<ReadingSession | null>();
-  api.openSelected = () => pending.promise;
+  const entered = deferred<void>();
+  api.openSelected = () => {
+    entered.resolve();
+    return pending.promise;
+  };
   const controller = new ReaderController(api);
   const opening = controller.open();
-  await Promise.resolve();
+  await entered.promise;
   await controller.close();
   pending.resolve(book);
   await opening;
@@ -68,14 +72,16 @@ test('dispose before beginOpen resolves cancels its late reservation', async () 
 test('concurrent open actions are not queued', async () => {
   const { api } = fakeApi();
   let calls = 0;
+  const entered = deferred<void>();
   const pending = deferred<ReadingSession | null>();
   api.openSelected = () => {
     calls++;
+    entered.resolve();
     return pending.promise;
   };
   const controller = new ReaderController(api);
   const first = controller.open();
-  await Promise.resolve();
+  await entered.promise;
   await controller.open();
   expect(calls).toBe(1);
   pending.resolve(null);

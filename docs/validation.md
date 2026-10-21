@@ -1,8 +1,8 @@
-# V0.4 validation
+# V0.5 validation
 
-Base inspected: local V0.3 working tree on `7f9ce19` (V0.2 commit), repository
-`Ayota-Daniel/libray-and-reader`. V0.3 changes were already modified/untracked at V0.4 start and were preserved.
-GitHub/main was not treated as the V0.3 source.
+V0.5 base inspected: clean local `4b74c5c` (V0.3 && V0.4), following `7f9ce19`
+(V0.2), repository `Ayota-Daniel/libray-and-reader`. Existing implementation and
+validation procedures were retained.
 Existing configuration was preserved. The old V0.1 note about an absent Git
 history described a prior sandbox and no longer describes this repository.
 
@@ -10,18 +10,22 @@ Linux tools: Bun 1.4.3, Rust/Cargo 1.99.1. No Windows/macOS validation occurred.
 
 ## Automated checks
 
+V0.5 final run: 2026-10-21. All checks below passed. The release build includes
+the strict application TypeScript/Vite build. Rust tests and Clippy also succeeded
+with `--locked --offline`; the Linux release build completed in 59.42 seconds.
+
 | Command                                                                                   | Result                                              |
 | ----------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `bun install --frozen-lockfile`                                                           | Passed, no lockfile changes needed                  |
 | `bun run format:check`                                                                    | Passed (Prettier + rustfmt)                         |
 | `bun run lint`                                                                            | Passed, warnings treated as errors                  |
-| `bun test`                                                                                | 41 tests passed, 269 assertions                     |
+| `bun test`                                                                                | 50 tests passed, 312 assertions                     |
 | `bun run typecheck:tests`                                                                 | Passed, includes source and all tests               |
 | `bun run build:web`                                                                       | Passed, strict TypeScript and Vite production build |
-| `cargo test --manifest-path src-tauri/Cargo.toml --locked`                                | 22 Rust tests passed                                |
+| `cargo test --manifest-path src-tauri/Cargo.toml --locked`                                | 31 Rust tests passed                                |
 | `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings` | Passed                                              |
 | `bun run build`                                                                           | Passed, Linux release executable produced           |
-| `python3 tools/make-fixtures.py /tmp/manga-reader-v04`                                    | Eight synthetic fixtures generated successfully     |
+| `python3 tools/make-fixtures.py /tmp/manga-reader-v05`                                    | Eight synthetic fixtures generated successfully     |
 
 Rust tests use an independent small ZIP writer to exercise Stored/Deflate,
 subfolders, JPEG/PNG, duplicate names, natural/case/zero/Unicode ordering, empty and
@@ -43,9 +47,10 @@ and fetch to verify opaque URL construction, binary blobs, busy retry, structure
 errors, cancellation, dimensions and object-URL disposal. **Those mocks do not
 validate native WebView custom-protocol behavior or CSP.**
 
-The generated Tauri ACL manifest was inspected: all seven application commands
+The generated Tauri ACL manifest was inspected: all twelve application commands
 have explicit permissions granted only to the main local window. No filesystem
-or frontend dialog-plugin permissions were added. V0.4 adds no dependencies and changes only the application version in Cargo.lock;
+or frontend dialog-plugin permissions were added. V0.5 adds event listen/unlisten
+and window destroy for the close-flush handshake, and bundled rusqlite on Rust.
 Bun dependencies and lockfile are unchanged. The release command now accepts an individual ticket ID; security scopes and
 archive limits remain unchanged.
 
@@ -69,12 +74,12 @@ a startup check, not evidence of rendering, Library IPC, selection or page deliv
 
 Native window observation/input and native dialog automation are unavailable to
 this agent session (browser automation alone is insufficient). Therefore none of
-the following is claimed as manually verified: native Library receiving `[]`,
+the following is claimed as manually verified: native persistent Library IPC,
 CBZ selection, rendered pages, rapid native navigation, session retention,
 replacement/close, or release media/CSP behavior. These are outstanding acceptance
 checks. The final build must be exercised in a graphical Linux session before
-V0.2/V0.3/V0.4 are considered fully validated. No native visual acceptance was performed
-for V0.4; the prior startup observation is not a new Reader acceptance result.
+V0.2–V0.5 are considered fully validated. No native visual acceptance was performed
+for V0.4 or V0.5; the prior startup observation is not a new Reader acceptance result.
 
 ## Reproducible native acceptance scenario
 
@@ -90,8 +95,8 @@ The environment overrides are process-local. Do not change system settings.
 Use `bun run dev` separately to compare development behavior if a release-only
 problem occurs; the release scenario is required for CSP/transport acceptance.
 
-1. Open Library. Confirm **Desktop core connected · 0 books**, rather than an
-   unavailable-runtime error. This specifically verifies real native IPC and ACL.
+1. With an isolated empty database, open Library. Confirm an empty library and
+   enabled Add Books, rather than an unavailable-runtime error. This verifies IPC/ACL.
 2. Open Reader → **Open CBZ**. Confirm a native picker restricted to one CBZ.
    Select `/tmp/manga-reader-v04/ordered.cbz`.
 3. Confirm title `ordered`, counter `1 / 3`, and a blue page with numeral **1**.
@@ -173,9 +178,9 @@ fit/navigation defect, or a surviving process with successful visual acceptance.
   cancelled, but byte/pixel/concurrency budgets remain enforced.
 - Payload budgets do not guarantee a hard process/GPU RSS ceiling in WebKit.
 
-Recommended V0.5: complete native acceptance first, then a focused reader
-accessibility/navigation refinement milestone (for example page-number navigation),
-without adding persistence, formats or animation. No V0.5 work has been started.
+Recommended V0.6: complete native acceptance first, then bounded, regenerable
+cover thumbnails with separate derived storage and opaque delivery. V0.6 has not
+been started.
 
 ## V0.3 changed files
 
@@ -260,3 +265,87 @@ acceptance.
 - Version/documentation: `package.json`, `src-tauri/Cargo.toml`,
   `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `src/app/App.tsx`,
   `README.md`, `docs/architecture.md`, `docs/validation.md`.
+
+## V0.5 automated coverage
+
+Nine additional Rust tests use isolated temporary databases/archives: migration and
+reopen/idempotency/future-version/corruption handling, valid/invalid/duplicate import,
+stable IDs and path-free DTOs, missing/restore/remove semantics, saved progress and
+resume/clamping/completion, valid Reader page access, structured write failures and
+retry, bounded operation admission, malformed records, latest coalesced shutdown
+flush, and preservation of the prior Reader on metadata-write failure/cancellation.
+No test accesses the developer's real application database.
+
+Nine additional frontend tests cover empty/populated/import results, resume,
+completion/backward navigation, refresh, Continue Reading, missing/removal wording,
+temporary opening, database errors and DTO validation; controlled deferred promises
+verify coalescing, flush and retry/close behavior. Existing Reader/cache tests pass.
+The controller tests now use explicit open-entry gates instead of a fixed microtask
+count. Happy DOM and mocks do not establish native close-dialog behavior.
+
+## V0.5 native acceptance (not performed)
+
+Use a fresh isolated test-data directory and synthetic sources. Reuse the same
+XDG_DATA_HOME for every restart in this scenario; choose a new directory for a new
+empty-library run. These environment variables affect this process only.
+
+```sh
+python3 tools/make-fixtures.py /tmp/manga-reader-v05
+XDG_DATA_HOME=/tmp/manga-reader-v05-data GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 src-tauri/target/release/manga-reader
+```
+
+1. Start with that fresh test-data directory; Library is empty without DB errors.
+2. Add Books: select `ordered.cbz` in the native picker.
+3. Confirm its real title, three-page count and unread card.
+4. Import the same file again.
+5. Confirm one duplicate result and still one card.
+6. Multi-select `cache.cbz`, `viewport.cbz`, `single.cbz` and `invalid.cbz`; verify
+   per-file results, valid entries only and no paths in error messages.
+7. Open ordered from Library; verify the existing Reader displays page 1.
+8. Navigate to page 2; close immediately after a turn to exercise flush.
+9. Close the application using its normal window close action.
+10. Restart with the same test-data directory.
+11. Confirm the same library entries remain.
+12. Reopen ordered from Library.
+13. Confirm page 2 (index 1), correct image and working navigation/cache/controls.
+14. Navigate to the final page.
+15. Return to Library: confirm completed; reopen and move back, then verify reading.
+16. Remove viewport with Remove from Library.
+17. Confirm `/tmp/manga-reader-v05/viewport.cbz` still exists and can open temporarily.
+18. Close the Reader and externally rename the synthetic ordered source temporarily.
+19. Restart with the same test-data directory.
+20. Confirm unavailable card; opening gives a recoverable error and keeps metadata.
+21. Restore the original filename; Refresh and open successfully at saved progress.
+22. Navigate, visit Home and use Continue Reading; verify the same saved-page flow.
+
+Also confirm Open CBZ never adds a card or saves temporary progress; cancellation
+and failed replacements preserve the prior Reader. Test close during rapid turns,
+and verify progress after restart. Verify opening single.cbz alone does not mark
+it completed. To exercise changed archive counts, use only copies of synthetic
+fixtures and replace a closed three-page source with a one-page fixture at the
+same path; reopening must clamp to page 1. Record observed backend/platform/results.
+
+Retain all V0.2–V0.4 scenarios above: their Open CBZ operations are temporary, so
+claims about no restored session and no Library additions still apply. The known
+Wayland protocol error is a separate host issue. No V0.5 native window, picker,
+restart/resume or visual acceptance is claimed by the automated suite/release build.
+
+## V0.5 changed files
+
+- Native service/storage: `src-tauri/src/core/library.rs`, new
+  `core/library/{repository,progress,tests}.rs`; `core/error.rs`, `core/reader.rs`.
+- Native adapters/setup: `src-tauri/src/commands.rs`, `src-tauri/src/lib.rs`, `src-tauri/build.rs`,
+  `capabilities/main.json`, five generated permission files for add/remove/open
+  library book/record progress/flush progress.
+- Frontend: `src/app/{App.tsx,styles.css}`, Library model/grid/hook,
+  `src/screens/{HomeScreen,LibraryScreen}.tsx`, `src/shared/ipc/{library,reader}.ts`,
+  Reader model/controller and new `src/features/reader/progress.ts`.
+- Tests: new `tests/library.test.tsx`, `tests/progress.test.ts`; updated
+  `tests/controller.test.ts`.
+- Version/dependencies: `package.json`, `src-tauri/{Cargo.toml,Cargo.lock,tauri.conf.json}`.
+- Documentation: `README.md`, `docs/architecture.md`, `docs/validation.md`.
+
+Limits: canonical-path identity only; no relink/watch/search/series, placeholder
+covers, one-page completion remains reading, no persisted display preferences,
+and abrupt termination may lose unflushed progress. Native visual acceptance and
+Windows/macOS testing remain outstanding.

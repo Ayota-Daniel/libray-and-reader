@@ -1,17 +1,20 @@
 # Manga Reader
 
-V0.4 local-first desktop comic/scan/manga reader: Tauri 2, React, strict TypeScript,
+V0.5 local-first desktop comic/scan/manga reader: Tauri 2, React, strict TypeScript,
 Vite, Bun and one Rust crate. Linux is the current build platform. Windows/macOS
 compatibility is preserved in the design but has not been validated.
 
 Reader can select one CBZ with a native picker, index its pages, display a single
 page on demand, navigate with buttons or LTR/RTL arrow keys, replace it and close it.
 Cancelling or failing a replacement preserves the current book. Switching screens
-preserves the session/page; restarting the app does not. **Opening is not importing:**
-Library still has no persistent collection and returns `[]` from Rust.
+preserves the session/page. **Open CBZ is temporary; Add Books imports persistently.**
+Library supports multiple native CBZ selections, duplicate detection, availability
+checks and metadata-only removal. SQLite retains books and reading progress across
+restarts; opening a Library or Home Continue Reading card resumes the saved page.
+The active Reader session itself is not automatically restored on startup.
 
 Static JPEG/PNG with ZIP Stored/Deflate are supported. No CBR/PDF/WebP, remote
-sources, persistence, animated transitions or installers.
+sources, animated transitions or installers. Covers are placeholders.
 Reader offers Fit Page, Fit Width, Fit Height and Original Size, bounded zoom
 (25–400% of the chosen fit), reset and pointer-drag panning for oversized pages.
 Direction/fit survive screen changes; zoom and pan reset on page changes.
@@ -81,7 +84,7 @@ Rust tests generate tiny ZIP/image fixtures in temporary files and remove them.
 For manual native testing, Python 3's standard library creates eight synthetic archives:
 
 ```sh
-python3 tools/make-fixtures.py /tmp/manga-reader-v04
+python3 tools/make-fixtures.py /tmp/manga-reader-v05
 ```
 
 No downloads or real manga are needed. Follow the native release scenario in
@@ -132,3 +135,33 @@ plugin commands or scopes are exposed to the frontend. The initially evaluated
 entries; `zip` and its extra encoder dependencies are absent from the final manifest.
 
 V0.3/V0.4 add no dependencies. Archive validation and security limits are unchanged.
+
+## V0.5 persistence
+
+Rust owns `rusqlite` 0.40.2 with default features disabled and `bundled` enabled.
+SQLite is compiled with the native build toolchain; no system SQLite installation,
+frontend SQL plugin or ORM is required. Linux builds are verified; Windows/macOS
+need their usual native C/C++ toolchains and remain untested. Bun dependencies are
+unchanged. Cargo.lock includes SQLite and its required transitive dependencies.
+
+The database is `library.sqlite3` under Tauri's application-data directory, normally
+`${XDG_DATA_HOME:-~/.local/share}/dev.mangareader.desktop/` on Linux. It is neither
+in the repository nor beside comics. The first open migrates schema version 0 to 1
+transactionally. Paths remain native; React receives opaque IDs and safe metadata.
+
+Duplicate identity is canonical native path plus source kind, without archive
+hashing. Copies/hard links/moved files are not deduplicated by content. Import
+validates/indexes using existing CBZ limits, without decoding every page. Removing
+a card never deletes its source. Missing sources retain their metadata and can be
+restored to the original path; Refresh rechecks availability.
+
+Page turns queue bounded, coalesced progress writes. Switching/closing books and
+normal window closure flush pending progress. A write failure is visible and can
+prevent closure until retry succeeds; force-killing the app can lose unflushed
+progress. Opening alone never marks completion; navigating onto the last page
+does, and navigating back clears completion. Single-page books therefore stay
+reading. Reader settings and image caches remain memory-only.
+
+See the isolated-database V0.5 manual scenario in [validation](docs/validation.md).
+Native visual acceptance remains outstanding. V0.6 should add bounded, regenerable
+cover thumbnails after completing that acceptance; it has not been started.

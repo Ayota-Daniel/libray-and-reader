@@ -14,6 +14,9 @@ pub enum ErrorCode {
     InvalidPage,
     Busy,
     Forbidden,
+    PersistenceFailed,
+    SourceUnavailable,
+    BookNotFound,
 }
 
 impl ErrorCode {
@@ -31,6 +34,9 @@ impl ErrorCode {
             Self::InvalidPage => "invalid_page",
             Self::Busy => "busy",
             Self::Forbidden => "forbidden",
+            Self::PersistenceFailed => "persistence_failed",
+            Self::SourceUnavailable => "source_unavailable",
+            Self::BookNotFound => "book_not_found",
         }
     }
 
@@ -47,6 +53,9 @@ impl ErrorCode {
             Self::SessionExpired => "This reading request has expired. Open the book again if needed.",
             Self::InvalidPage => "This page does not belong to the open book.",
             Self::Busy => "The reader is finishing an earlier operation. Please try again shortly.",
+            Self::PersistenceFailed => "Library or reading progress could not be saved or loaded. Check available storage and try again.",
+            Self::SourceUnavailable => "This book is unavailable. Restore its original file and try again.",
+            Self::BookNotFound => "This book is no longer in the library.",
             Self::Forbidden => "This window is not allowed to access the reader.",
         }
     }

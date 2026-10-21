@@ -1,3 +1,4 @@
+import { ProgressQueue } from './progress';
 import { PageCache } from './pageCache';
 import { failure } from '../../shared/ipc/errors';
 import type { ReaderApi, ReaderFailure, ReadingSession } from './model';
@@ -25,8 +26,12 @@ export class ReaderController {
   private revision = 0;
   private disposed = false;
   readonly pages: PageCache;
+  readonly progress: ProgressQueue;
   constructor(readonly api: ReaderApi) {
     this.pages = new PageCache(api, this.nextRevision);
+    this.progress = new ProgressQueue(api, (error) =>
+      this.update({ error: failure(error) }),
+    );
   }
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => {
@@ -54,24 +59,28 @@ export class ReaderController {
         this.update({ error: failure(error) });
     }
   }
-  open = async () => {
+  open = async (libraryBookId?: string) => {
     if (this.disposed || this.snapshot.opening || this.snapshot.closing) return;
     const generation = ++this.generation;
     this.update({ opening: true, error: null });
     let operation: string | null = null;
     try {
+      await this.progress.flush();
       operation = await this.api.beginOpen();
       if (this.disposed || generation !== this.generation) {
         await this.cleanup(this.api.cancelOpen(operation));
         return;
       }
       this.operationId = operation;
-      const book = await this.api.openSelected(operation);
+      const book =
+        libraryBookId && this.api.openLibrary
+          ? await this.api.openLibrary(operation, libraryBookId)
+          : await this.api.openSelected(operation);
       if (this.disposed || generation !== this.generation) {
         if (book) await this.cleanup(this.api.closeBook(book.sessionId));
         return;
       }
-      if (book) this.update({ book, pageIndex: 0 });
+      if (book) this.update({ book, pageIndex: book.initialPageIndex ?? 0 });
     } catch (error) {
       if (!this.disposed && generation === this.generation)
         this.update({ error: failure(error) });
@@ -89,6 +98,7 @@ export class ReaderController {
     this.update({ closing: true, opening: false, error: null });
     if (operation) await this.cleanup(this.api.cancelOpen(operation));
     try {
+      await this.progress.flush();
       if (book) await this.api.closeBook(book.sessionId);
       this.update({ book: null, pageIndex: 0 });
     } catch (error) {
@@ -100,13 +110,24 @@ export class ReaderController {
     }
   };
   step = (delta: -1 | 1) => {
-    if (this.disposed || this.snapshot.closing) return;
+    if (this.disposed || this.snapshot.closing || this.snapshot.opening) return;
     const { book, pageIndex } = this.snapshot;
     const next = readerReducer(
       { pageCount: book?.pages.length ?? 0, pageIndex },
       { type: 'step', delta },
     );
     this.update({ pageIndex: next.pageIndex });
+    if (book?.libraryBookId && next.pageIndex !== pageIndex)
+      this.progress.record(book.sessionId, next.pageIndex);
+  };
+  prepareShutdown = async () => {
+    this.update({ closing: true });
+    try {
+      await this.progress.flush();
+    } catch (error) {
+      this.update({ closing: false, error: failure(error) });
+      throw error;
+    }
   };
   dispose = () => {
     if (this.disposed) return;
@@ -116,7 +137,10 @@ export class ReaderController {
     const book = this.snapshot.book;
     if (this.operationId)
       void this.cleanup(this.api.cancelOpen(this.operationId));
-    if (book) void this.cleanup(this.api.closeBook(book.sessionId));
+    if (book)
+      void this.cleanup(
+        this.progress.flush().then(() => this.api.closeBook(book.sessionId)),
+      );
     this.listeners.clear();
   };
 }

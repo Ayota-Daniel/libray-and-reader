@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-remove-book"
+description = "Enables the remove_book command without any pre-configured scope."
+commands.allow = ["remove_book"]
+
+[[permission]]
+identifier = "deny-remove-book"
+description = "Denies the remove_book command without any pre-configured scope."
+commands.deny = ["remove_book"]

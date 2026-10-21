@@ -49,7 +49,33 @@ pub(crate) fn authorize(window: &WebviewWindow) -> CommandResult<()> {
 #[serde(rename_all = "camelCase")]
 pub struct BookDto {
     id: String,
+    source_kind: String,
     title: String,
+    page_count: usize,
+    added_at: i64,
+    last_opened_at: Option<i64>,
+    last_page_index: Option<usize>,
+    progress_page_count: Option<usize>,
+    last_read_at: Option<i64>,
+    status: &'static str,
+    available: bool,
+}
+impl From<library::Book> for BookDto {
+    fn from(b: library::Book) -> Self {
+        Self {
+            id: b.id,
+            source_kind: b.source_kind,
+            title: b.title,
+            page_count: b.page_count,
+            added_at: b.added_at,
+            last_opened_at: b.last_opened_at,
+            last_page_index: b.last_page_index,
+            progress_page_count: b.progress_page_count,
+            last_read_at: b.last_read_at,
+            status: b.status,
+            available: b.available,
+        }
+    }
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,26 +88,140 @@ pub struct SessionDto {
     session_id: String,
     title: String,
     pages: Vec<PageDto>,
+    library_book_id: Option<String>,
+    initial_page_index: usize,
 }
 impl From<Book> for SessionDto {
     fn from(book: Book) -> Self {
         Self {
             session_id: book.session_id,
             title: book.title,
+            library_book_id: book.library_book_id,
+            initial_page_index: book.initial_page_index,
             pages: book.pages.into_iter().map(|id| PageDto { id }).collect(),
         }
     }
 }
+async fn library_job<T: Send + 'static>(
+    library: Arc<library::Library>,
+    job: impl FnOnce(&library::Library) -> crate::core::error::Result<T> + Send + 'static,
+) -> CommandResult<T> {
+    let permit = library.admit()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
+        job(&library)
+    })
+    .await
+    .map_err(|e| {
+        ErrorDto::from(ReaderError::new(
+            ErrorCode::PersistenceFailed,
+            e.to_string(),
+        ))
+    })?
+    .map_err(Into::into)
+}
 #[tauri::command]
-pub fn list_books(window: WebviewWindow) -> CommandResult<Vec<BookDto>> {
+pub async fn list_books(
+    window: WebviewWindow,
+    library: State<'_, Arc<library::Library>>,
+) -> CommandResult<Vec<BookDto>> {
     authorize(&window)?;
-    Ok(library::list_books()
-        .into_iter()
-        .map(|book| BookDto {
-            id: book.id,
-            title: book.title,
-        })
-        .collect())
+    library_job(library.inner().clone(), |l| {
+        Ok(l.list()?.into_iter().map(Into::into).collect())
+    })
+    .await
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportDto {
+    title: String,
+    outcome: &'static str,
+    error: Option<ErrorDto>,
+}
+#[tauri::command]
+pub async fn add_books(
+    window: WebviewWindow,
+    library: State<'_, Arc<library::Library>>,
+) -> CommandResult<Vec<ImportDto>> {
+    authorize(&window)?;
+    library_job(library.inner().clone(), move |l| {
+        let selected = window
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .add_filter("Comic archives", &["cbz"])
+            .blocking_pick_files()
+            .unwrap_or_default();
+        if selected.len() > 100 {
+            return Err(ReaderError::new(
+                ErrorCode::LimitExceeded,
+                "import selection",
+            ));
+        }
+        let paths = selected
+            .into_iter()
+            .map(|p| {
+                p.into_path()
+                    .map_err(|e| ReaderError::new(ErrorCode::ReadFailed, e.to_string()))
+            })
+            .collect::<crate::core::error::Result<Vec<_>>>()?;
+        Ok(l.import(paths)?
+            .into_iter()
+            .map(|r| ImportDto {
+                title: r.title,
+                outcome: r.outcome,
+                error: r.error.map(Into::into),
+            })
+            .collect())
+    })
+    .await
+}
+#[tauri::command]
+pub async fn remove_book(
+    window: WebviewWindow,
+    library: State<'_, Arc<library::Library>>,
+    book_id: String,
+) -> CommandResult<()> {
+    authorize(&window)?;
+    library_job(library.inner().clone(), move |l| l.remove(&book_id)).await
+}
+#[tauri::command]
+pub async fn open_library_book(
+    window: WebviewWindow,
+    reader: State<'_, Arc<Reader>>,
+    library: State<'_, Arc<library::Library>>,
+    operation_id: String,
+    book_id: String,
+) -> CommandResult<SessionDto> {
+    authorize(&window)?;
+    let work = reader.inner().start_open(&operation_id)?;
+    library_job(library.inner().clone(), move |l| {
+        l.open_book(&book_id, work).map(Into::into)
+    })
+    .await
+}
+#[tauri::command]
+pub fn record_progress(
+    window: WebviewWindow,
+    reader: State<'_, Arc<Reader>>,
+    library: State<'_, Arc<library::Library>>,
+    session_id: String,
+    page_index: usize,
+    revision: u64,
+) -> CommandResult<()> {
+    authorize(&window)?;
+    if let Some(progress) = reader.progress(&session_id, page_index, revision)? {
+        library.record(progress)?;
+    }
+    Ok(())
+}
+#[tauri::command]
+pub async fn flush_progress(
+    window: WebviewWindow,
+    library: State<'_, Arc<library::Library>>,
+) -> CommandResult<()> {
+    authorize(&window)?;
+    library_job(library.inner().clone(), |l| l.flush()).await
 }
 #[tauri::command]
 pub fn begin_open(window: WebviewWindow, reader: State<'_, Arc<Reader>>) -> CommandResult<String> {

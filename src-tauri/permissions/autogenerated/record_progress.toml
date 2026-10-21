@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-record-progress"
+description = "Enables the record_progress command without any pre-configured scope."
+commands.allow = ["record_progress"]
+
+[[permission]]
+identifier = "deny-record-progress"
+description = "Denies the record_progress command without any pre-configured scope."
+commands.deny = ["record_progress"]

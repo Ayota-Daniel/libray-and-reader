@@ -266,3 +266,20 @@ p {
     min-height: 420px;
   }
 }
+.book-card {
+  border: 1px solid #434653;
+  border-radius: 10px;
+  padding: 1rem;
+  overflow-wrap: anywhere;
+}
+.book-card button {
+  margin: 0.25rem;
+}
+.cover-placeholder {
+  background: #292b34;
+  color: #acafbd;
+  min-height: 100px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+}

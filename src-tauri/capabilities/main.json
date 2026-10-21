@@ -10,6 +10,14 @@
     "allow-cancel-open",
     "allow-close-book",
     "allow-request-page",
-    "allow-release-page"
+    "allow-release-page",
+    "allow-add-books",
+    "allow-remove-book",
+    "allow-open-library-book",
+    "allow-record-progress",
+    "allow-flush-progress",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-destroy"
   ]
 }

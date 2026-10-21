@@ -1,10 +1,9 @@
-# V0.4 architecture
+# V0.5 architecture
 
-One React application, one Rust crate, Tauri 2. This milestone reads a single local
-CBZ at a time. Opening a book is **not** a Library import. Sessions and positions
-are volatile and disappear when the application exits. No database, HTTP server,
-remote provider or persistence has been introduced. V0.4 adds only a bounded
-in-memory page working set.
+One React application, one Rust crate, Tauri 2. Rust-owned SQLite persists Library
+metadata and logical reading progress. Reader sessions, page tickets, image caches
+and display preferences remain transient. Open CBZ is temporary; Add Books is a
+persistent import. Both opening routes use the same Reader and PageCache.
 
 ## Ownership
 
@@ -27,9 +26,9 @@ in-memory page working set.
   validation. `core` imports no Tauri types. Commands and `media.rs` only authorize,
   schedule bounded work and convert the results to DTOs or HTTP-shaped responses.
 
-Library still returns a real empty catalog from Rust; its state and grid renderer
-remain independent. Home has no fabricated recent activity. Future list/shelf
-renderers consume catalog metadata, not source implementation details.
+Library consumes safe persistent catalog metadata. Home selects the most recently
+read book, falling back to last opened time, with an ID tie-breaker. Both use the
+same BookCard and library-opening callback; no fabricated activity is displayed.
 
 ## Session and page contract
 
@@ -45,6 +44,8 @@ A successful open atomically replaces the native session and returns:
 ```ts
 {
   sessionId: string; // opaque 32-character lowercase hex ID
+  libraryBookId: string | null; // stable book ID, null for temporary sources
+  initialPageIndex: number; // saved position clamped to this archive
   title: string; // sanitized file stem, at most 256 Unicode characters
   pages: {
     id: string;
@@ -53,7 +54,7 @@ A successful open atomically replaces the native session and returns:
 }
 ```
 
-The first page is selected. Dimensions are deliberately absent during indexing.
+Temporary sources select the first page; library sources resume saved progress. Dimensions are deliberately absent during indexing.
 The frontend validates IDs, title, page count and uniqueness before accepting a
 response. The controller suppresses double opens. Late successful responses after
 close/unmount are explicitly closed, rather than becoming orphaned sessions.
@@ -86,7 +87,8 @@ allows only the exact IPC/media origins, local scripts/styles, and `blob:` image
 CORS echoes only a recognized local origin. No wildcard, remote URL, filesystem
 permission or frontend dialog-plugin permission is granted. `build.rs` explicitly
 registers all application commands with Tauri's AppManifest; the main local
-capability grants only these seven commands. Window/origin checks are additional
+capability grants twelve application commands. Event listen/unlisten and window
+destroy permissions support the normal-close flush handshake. Window/origin checks are additional
 checks, not a substitute for that ACL. Native drag/drop path exposure is disabled.
 
 ## Work admission, cancellation and resource ownership
@@ -184,7 +186,8 @@ unresponsive storage have no hard wall-clock deadline.
 
 Stable native codes: `invalid_archive`, `empty_archive`, `encrypted_archive`,
 `unsupported_compression`, `unsafe_entry`, `limit_exceeded`, `corrupt_page`,
-`read_failed`, `session_expired`, `invalid_page`, `busy`, `forbidden`. Diagnostics
+`read_failed`, `session_expired`, `invalid_page`, `busy`, `forbidden`,
+`persistence_failed`, `source_unavailable`, `book_not_found`. Diagnostics
 are logged natively; the UI receives concise actionable messages. Adapter codes
 include `desktop_unavailable`, `invalid_response`, `communication_failed`.
 Library now distinguishes runtime absence from malformed IPC data and failures.
@@ -193,9 +196,8 @@ The future PageTransition host remains inside rendering, separate from state and
 acquisition; no animation engine exists yet. None/Slide/Fade/Reveal/PageCurl may
 later use DOM, Canvas or WebGL and must support reduced motion and LTR/RTL.
 Library renderers, Sources, image processing, progress, cache and settings remain
-separate domains. Persistence, remote formats/providers, disk caching,
-spread/continuous layouts, bookshelf rendering, transitions and installers remain
-outside V0.4. Native release acceptance is still outstanding.
+separate domains. Remote formats/providers, disk image caching, spread/continuous
+layouts, bookshelf rendering, transitions and installers remain outside V0.5. Native release acceptance is still outstanding.
 
 ## V0.3 Reader fundamentals
 
@@ -248,7 +250,7 @@ transition host; it does not own or invoke any transition implementation.
 
 Limitations: zoom is fit-relative and anchored at the top/left, not cursor-centered;
 there is no inertia, custom trackpad gesture handling, pinch, smooth zoom, animation,
-spread, continuous mode, persistence or additional format. Existing
+spread, continuous mode, display-preference persistence or additional format. Existing
 OS scrollbar behavior remains; this is scrolling within one page, not continuous
 book scrolling. No meaningful motion was introduced; Reduced Motion stays compatible.
 
@@ -336,5 +338,102 @@ retry loop for corrupt pages or budget-skipped preloads.
 This caches encoded resources, not guaranteed decoded WebView surfaces. Cached
 navigation removes archive/transport latency, but a browser image onLoad/decode can
 still briefly show loading. Very large neighbors may be discarded after one bounded
-read, and reverse reading keeps the simple next-before-previous policy. No persistence,
-pre-decoding pool, animations, spreads, formats, remote sources or V0.5 work is added.
+read, and reverse reading keeps the simple next-before-previous policy. No disk
+page cache, pre-decoding pool, animations, spreads or remote sources are added.
+
+## Persistent Library (V0.5)
+
+The dependency flow is React → validated `shared/ipc/library.ts` → thin commands
+→ `core::library::Library` → `library/repository.rs` → SQLite. Domain types have no
+Tauri dependency. `library/progress.rs` owns the write worker. Database-open errors
+are retained as typed service errors, allowing the UI and temporary Reader to
+remain usable. SQL and paths never cross IPC; diagnostics stay native.
+
+### Storage and migration
+
+Setup resolves Tauri `app_data_dir()`, creates it and opens `library.sqlite3`. On
+Linux this normally means `$XDG_DATA_HOME/dev.mangareader.desktop/` (fallback
+`~/.local/share`); macOS/Windows use Tauri's platform application-data directory.
+`rusqlite` uses bundled SQLite, no ORM, default journal/durability settings and a
+two-second busy timeout. `PRAGMA user_version` is the migration identifier: version
+0 creates version 1 in one transaction; version 1 validates records/schema, and
+future versions or malformed databases return `persistence_failed`. No destructive
+automatic database reset is performed.
+
+One `books` table holds `id`, `source_kind`, `source_ref`, `title`, `page_count`,
+`added_at`, `opened_at`, `progress_index`, `progress_count`, `read_at`, `completed`.
+Progress is nullable until navigation; timestamps are epoch milliseconds. Stable
+UUID-derived opaque IDs are independent of Reader/session/page/ticket IDs.
+`source_kind` currently accepts `local_cbz`; future sources require an explicit
+migration/implementation, not speculative tables. `source_ref` is an absolute
+native path BLOB (Unix bytes or Windows UTF-16LE), never a frontend string. Database
+portability between operating systems is not promised. SQL constraints and read
+validation reject unexpected counts, IDs, kinds, timestamps and partial progress.
+
+### Import, identity and availability
+
+Add Books uses the existing Rust dialog plugin with multiple selection, maximum
+100 candidates. A single admitted library operation processes candidates serially:
+canonicalize path → existing safe CBZ index validation outside the DB lock →
+short insertion transaction. Per-file results distinguish imported, duplicate and
+failed using sanitized titles and typed errors. It does not hash or decode every
+page; later corrupt page data still produces the existing page-local error.
+
+A UNIQUE constraint on `(source_kind, source_ref)` deduplicates canonical paths,
+including symlink aliases. Copies, hard links, case aliases not resolved by the OS,
+and moved files are not content-deduplicated. The catalog is bounded to 10,000
+records. Default ordering is last opened/recently added descending, then stable ID.
+There is no search, additional sort UI, series inference or filesystem crawling.
+
+Availability is checked outside the DB lock on listing/opening. A regular file's
+existence does not guarantee a valid readable archive; open validates it again.
+Missing entries remain listed and produce recoverable `source_unavailable` errors.
+Restore the original path and refresh/reopen; no watcher or relinking is included.
+Remove from Library deletes only the row. An already-open Reader may continue;
+late progress UPDATEs cannot recreate a removed record.
+
+### Progress, resume and consistency
+
+Actual logical page-index changes queue progress, independent of image/preload
+completion. A corrupt page can therefore be the saved position. Opening a book
+alone updates last-opened time but never marks completion. Frontend progress has
+one IPC in flight and one replaceable latest pending update. Rust validates the
+active session, range and increasing progress revision, derives the trusted book
+ID/count from the session, then admits it to one dedicated worker with one latest
+pending update. There is no growing write queue or page-turn wait for SQLite.
+Temporary sessions produce no persistent progress. Ticket revisions remain separate.
+
+Admission acknowledgment is not a durability acknowledgment. Flush waits for the
+latest SQLite write before replacement/close and Library/Home refresh. Failed writes
+retain the latest update, surface a typed error and stop automatic retries until
+flush retries; failure does not silently close/replace the current Reader. The
+normal Tauri close-request handler freezes navigation, awaits flush, and permits
+destruction only on success. Native destruction also flushes/joins as a fallback.
+Unexpected termination/power loss can lose pending updates; no crash-proof final
+page guarantee is made.
+
+Opening by stable ID flushes progress, loads the native reference, indexes outside
+the DB lock, clamps the saved index to `0..new_count-1`, and commits through the
+existing Reader session abstraction. No saved progress means index zero. A short
+last-opened metadata update runs under the Reader commit lock after cancellation
+validation; DB failure preserves the previous session. No archive/image decoding
+is performed under that lock or a database transaction. The service admits one
+general library job before spawning; the existing one Reader-open and one page
+worker limits remain, plus one progress worker.
+
+New imports are unread. Successful open makes an unread book reading. Navigation
+onto the final page marks completed; moving back clears it. Completion never blocks
+opening or re-reading. A single-page book stays reading because opening is not a
+completion event. Page count is refreshed on open; the recorded progress count
+retains the count at its last write until the next navigation update.
+
+### Presentation and scope
+
+Library cards show real titles, progress/status, unavailable state and explicit
+metadata-only removal. Home Continue Reading shares the same open/resume flow.
+Placeholder covers intentionally avoid an extra decode/storage pipeline. A future
+V0.6 should generate bounded, regenerable thumbnails stored separately from SQLite
+and source comics, with opaque delivery. No V0.6 implementation is included.
+Preferences, page bytes and cache resources are not persisted. Existing V0.4 cache
+bounds and cleanup remain unchanged. There is no series model, relinking, cloud
+sync, disk image cache, new format or immersive bookshelf.
