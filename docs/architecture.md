@@ -601,6 +601,43 @@ thumbnail show the fallback while the stored title remains visible. A broken cov
 does not alter book availability. No schema migration or physical thickness value
 is introduced; spine/thickness are deferred until the future renderer needs them.
 
+### Library renderer boundary and Shelf (V0.8)
+
+`useLibrary` remains the single owner of loaded Library DTOs and refresh behavior.
+`presentBook` derives display status/page labels, progress percent, stable muted
+fallback tone, visual height and bounded thickness without mutating or persisting
+the Book. Both `LibraryGrid` and `BookShelf` receive the same ordered list and
+callbacks through `LibraryRenderer`; the in-memory Grid/Shelf switch is owned by
+`LibraryScreen`. Search remains unchanged (there is no search/filter feature yet).
+This leaves room for a Classic List renderer without changing persistence.
+
+The Shelf renderer lays each book into a responsive CSS grid with fixed-size shelf
+rows; rows wrap naturally instead of compressing the books. Each slot renders a
+3D-transformed spine with a wood plank/contact shadow, restrained wall shading,
+small deterministic height variation and thickness bands derived from page count
+(9–22 CSS pixels, 14 px for unknown/invalid counts). Those values are strictly
+visual hints, not physical dimensions. A stable ID hash selects the fallback tone
+and height, so rerenders do not shuffle books. Completion/unavailable markers remain
+subtle; status and progress remain available in accessible text and the selected
+details card. The existing `BookVisual` and cover URI are reused in that card and
+the Grid renderer; Shelf mode does not parse full-resolution pages or create a
+second cover pipeline.
+
+Selecting a spine is a semantic toggle button, so keyboard Enter/Space and pointer
+activation select the same item. Selection only reveals a small details preview;
+it does not mark the item opened, alter progress or construct a Reader session. The
+existing Open/Resume button is the sole selection-to-Reader boundary and calls the
+same persistent open callback as Grid. The preview reuses `BookCard`, including
+the recoverable unavailable state. Home remains a practical Continue Reading card.
+
+Hover/focus/selection use short CSS transforms and shadows; `prefers-reduced-motion`
+removes movement and the details entrance animation while preserving focus and
+selection indicators. Pointer motion does not drive React state. Grid remains the
+default until native Shelf visual acceptance. Shelf is a foundation only: there is
+no book-flight/cinematic open, camera, physical cover mesh, row persistence,
+virtualization, Classic List, new database field, or 3D engine. Layout/performance
+has been exercised with 30 items in UI tests, not benchmarked at very large counts.
+
 ## Linux runtime compatibility (V0.6.1)
 
 The optional Linux-only `tools/dev-wayland-compat.sh` launcher sets

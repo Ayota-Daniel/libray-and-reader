@@ -572,9 +572,8 @@ the opt-in Linux development helper is the narrower solution. Users bypass it
 with the ordinary dev command. Its explicit flag overrides an inherited value
 only for this subprocess; it does not edit global environment/configuration.
 
-V0.7 is not started. Native development is now practical on this tested stack,
-but complete accumulated native acceptance remains a prerequisite for calling
-the baseline fully validated.
+V0.7 covers and visual Library foundation are implemented and committed as
+`c516b07`. The accumulated native acceptance is still partial, as documented above.
 
 ### Final V0.6.1 regression run (2026-10-23)
 
@@ -626,7 +625,33 @@ behavior. Earlier screenshots did observe the basic native Library, Reader pages
 double spreads, RTL, fit modes and direct page jump, but do not substitute for this
 remaining list.
 
-The next V0.8 should finish the accumulated native acceptance and V0.7 cover
-protocol/UI checks first, then add a user-selectable Classic Grid/List renderer
-boundary with shared book presentation data if desired. Do not start immersive
-3D or PageCurl until those native foundations are accepted.
+## V0.8 Shelf renderer validation
+
+Automated UI coverage switches Grid → Shelf → Grid without changing source order,
+selects without opening or changing persistent progress, then opens through the
+existing Reader flow. A 30-book fixture verifies all entries stay in source order
+across responsive CSS rows. Another fixture includes completed and unavailable
+items. Presentation unit tests cover thickness bands/bounds/default, deterministic
+height/tone and no domain mutation. Reduced-motion CSS disables the shelf transforms
+and detail entrance while leaving semantic selection in place.
+
+Native Wayland checks required for this milestone: launch with
+`bun run dev:wayland-compat`; compare Grid and Shelf; switch both directions; inspect
+portrait and landscape covers in selected details, fallback and cached unavailable
+books; verify several wrapped rows, ordering, hover, keyboard focus/Enter/Space,
+selection preview without progress changes, and Open/Continue; resize repeatedly;
+check reduced-motion behavior and watch for flicker/GPU corruption/Error 71. These
+checks have not yet been performed for V0.8. The prior CUA desktop inventory exposed
+no native apps/windows in this session, so no visual acceptance is claimed.
+
+Accumulated V0.2–V0.7 native checks remain: mouse pan; persistent progress after
+restart and Continue Reading; missing-source recovery; metadata-only removal while
+retaining the CBZ; reverse spread navigation; odd final spread; isolated cover;
+wide-page behavior; V0.7 cover cache regeneration/invalidation and missing-cover
+protocol rendering. Basic native Reader/Spread rendering and the compatibility
+launcher were observed previously, but the full checklist is not complete.
+
+No runtime dependencies or SQLite changes were introduced. The next V0.9 should
+complete this native acceptance and fix any rendering/layout issues found; only
+then should a separate design pass specify a bounded shelf-to-Reader cinematic
+transition. PageCurl and continuous reading remain separate future work.

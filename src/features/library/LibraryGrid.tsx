@@ -1,6 +1,7 @@
 import type { LibraryBook } from './model';
 import { EmptyState } from '../../shared/ui/EmptyState';
 import { BookVisual } from './BookVisual';
+import { presentBook } from './presentation';
 export function BookCard({
   book,
   open,
@@ -12,20 +13,13 @@ export function BookCard({
   remove?: () => void;
   disabled?: boolean;
 }) {
+  const presentation = presentBook(book);
   return (
     <article className="book-card" data-status={book.status}>
       <BookVisual book={book} />
       <h2>{book.title}</h2>
       <p className="book-meta">
-        {book.status === 'completed'
-          ? 'Completed'
-          : book.status === 'reading'
-            ? 'Reading'
-            : 'Unread'}{' '}
-        ·{' '}
-        {book.lastPageIndex === null
-          ? `${book.pageCount} pages`
-          : `Page ${Math.min(book.lastPageIndex + 1, book.pageCount)} / ${book.progressPageCount ?? book.pageCount}`}
+        {presentation.statusLabel} · {presentation.pageLabel}
       </p>
       {!book.available && (
         <p>Unavailable — restore the original file, then retry.</p>

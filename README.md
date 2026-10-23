@@ -10,14 +10,15 @@ jump to a page number, replace it and close it.
 Cancelling or failing a replacement preserves the current book. Switching screens
 preserves the session/page. **Open CBZ is temporary; Add Books imports persistently.**
 Library supports multiple native CBZ selections, duplicate detection, availability
-checks and metadata-only removal. SQLite retains books and reading progress across
+checks, metadata-only removal and experimental Grid/Shelf renderers. SQLite retains books and reading progress across
 restarts; opening a Library or Home Continue Reading card resumes the saved page.
 The active Reader session itself is not automatically restored on startup.
 
 Static JPEG/PNG with ZIP Stored/Deflate are supported. No CBR/PDF/WebP, remote
 sources, animated transitions or installers. Persistent Library imports generate
 small derived PNG covers under the Tauri application-data `covers/` directory; the
-source CBZ remains authoritative and covers can be regenerated.
+source CBZ remains authoritative and covers can be regenerated. Shelf view uses
+CSS perspective and keeps selection separate from opening a book.
 Reader offers Fit Page, Fit Width, Fit Height and Original Size, bounded zoom
 (25–400% of the chosen fit), reset and pointer-drag panning for oversized pages.
 Direction/fit survive screen changes; zoom and pan reset on page changes.

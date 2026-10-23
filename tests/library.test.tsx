@@ -104,6 +104,9 @@ test('empty library, batch import, duplicate and invalid results use real metada
   await mount(data);
   await click('Library');
   expect(host.textContent).toContain('Your library is empty');
+  await click('Shelf');
+  expect(host.textContent).toContain('Your shelves are waiting for books.');
+  await click('Grid');
   data.setImports([
     { title: 'Volume One', outcome: 'imported', error: null },
     { title: 'Volume One', outcome: 'duplicate', error: null },
@@ -178,6 +181,77 @@ test('BookVisual uses the opaque cover resource, preserves progress and falls ba
   expect(host.querySelector('.book-visual img')?.getAttribute('src')).toBe(
     `cover://localhost/${saved.id}`,
   );
+});
+test('Grid and Shelf render the same ordered books; selection previews without opening until Continue', async () => {
+  const second: LibraryBook = {
+    ...saved,
+    id: '8'.repeat(32),
+    title: 'Volume Two',
+    pageCount: 6,
+    status: 'completed',
+    available: false,
+    lastOpenedAt: 20,
+    lastPageIndex: 5,
+    progressPageCount: 6,
+    lastReadAt: 30,
+  };
+  const data = fixture([saved, second]);
+  await mount(data);
+  await click('Library');
+  expect(
+    [...host.querySelectorAll('.library-grid h2')].map(
+      (node) => node.textContent,
+    ),
+  ).toEqual(['Volume One', 'Volume Two']);
+  await click('Shelf');
+  expect(host.querySelectorAll('.shelf-book')).toHaveLength(2);
+  expect(
+    [...host.querySelectorAll('.shelf-book')].map((node) =>
+      node.getAttribute('aria-label'),
+    ),
+  ).toEqual([
+    'Select Volume One, unread, 3 pages',
+    'Select Volume Two, completed, Page 6 / 6, unavailable',
+  ]);
+  expect(host.querySelector('.shelf-complete')).not.toBeNull();
+  expect(host.querySelector('.shelf-unavailable')).not.toBeNull();
+  const unavailable =
+    host.querySelectorAll<HTMLButtonElement>('.shelf-book')[1]!;
+  await act(async () => unavailable.click());
+  expect(host.querySelector('.shelf-details')?.textContent).toContain(
+    'Unavailable',
+  );
+  await click('Resume reading');
+  expect(host.textContent).toContain('Restore the original file');
+  expect(data.loaded).toHaveLength(0);
+  await click('Grid');
+  expect(host.querySelectorAll('.library-grid h2')).toHaveLength(2);
+  await click('Shelf');
+  const first = host.querySelector<HTMLButtonElement>('.shelf-book')!;
+  expect(first.tagName).toBe('BUTTON');
+  first.focus();
+  await act(async () => first.click());
+  expect(first.getAttribute('aria-pressed')).toBe('true');
+  expect(host.querySelector('.shelf-details')).not.toBeNull();
+  expect(data.loaded).toHaveLength(0);
+  expect(data.books()[0]?.lastOpenedAt).toBeNull();
+  await click('Open book');
+  expect(data.loaded).toHaveLength(2);
+});
+test('Shelf renderer keeps many books in the source order across responsive rows', async () => {
+  const many = Array.from({ length: 30 }, (_, index) => ({
+    ...saved,
+    id: index.toString(16).padStart(32, '0'),
+    title: `Book ${index + 1}`,
+  }));
+  const data = fixture(many);
+  await mount(data);
+  await click('Library');
+  await click('Shelf');
+  const shelves = [...host.querySelectorAll('.shelf-book')];
+  expect(shelves).toHaveLength(30);
+  expect(shelves[0]?.getAttribute('aria-label')).toContain('Book 1');
+  expect(shelves[29]?.getAttribute('aria-label')).toContain('Book 30');
 });
 test('Home Continue Reading opens persistent identity; direct Open CBZ never imports', async () => {
   const data = fixture([

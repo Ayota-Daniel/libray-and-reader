@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { LibraryBook } from './model';
+import { presentBook } from './presentation';
 
 function coverUrl(id: string) {
   try {
@@ -12,19 +14,12 @@ function coverUrl(id: string) {
 
 export function BookVisual({ book }: { book: LibraryBook }) {
   const [failed, setFailed] = useState(false);
-  const progress =
-    book.lastPageIndex === null
-      ? 0
-      : Math.min(
-          100,
-          Math.round(
-            ((book.lastPageIndex + 1) /
-              (book.progressPageCount ?? book.pageCount)) *
-              100,
-          ),
-        );
+  const presentation = presentBook(book);
   return (
-    <div className={`book-visual${book.available ? '' : ' is-unavailable'}`}>
+    <div
+      className={`book-visual${book.available ? '' : ' is-unavailable'}`}
+      style={{ '--book-tone': presentation.tone } as CSSProperties}
+    >
       {!failed ? (
         <img
           src={coverUrl(book.id)}
@@ -58,9 +53,9 @@ export function BookVisual({ book }: { book: LibraryBook }) {
           aria-label="Reading progress"
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuenow={progress}
+          aria-valuenow={presentation.progressPercent ?? 0}
         >
-          <span style={{ width: `${progress}%` }} />
+          <span style={{ width: `${presentation.progressPercent ?? 0}%` }} />
         </div>
       )}
     </div>

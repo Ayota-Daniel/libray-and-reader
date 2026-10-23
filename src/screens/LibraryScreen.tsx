@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import { LibraryGrid } from '../features/library/LibraryGrid';
 import { useLibrary } from '../features/library/useLibrary';
 import type { LibraryApi, ImportResult } from '../features/library/model';
+import {
+  LibraryRenderer,
+  type LibraryView,
+} from '../features/library/LibraryRenderer';
 import { failure } from '../shared/ipc/errors';
 export function LibraryScreen({
   api,
@@ -16,6 +19,8 @@ export function LibraryScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<ImportResult[]>([]);
+  const [view, setView] = useState<LibraryView>('grid');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const act = async (work: () => Promise<void>) => {
     if (busy) return;
     setBusy(true);
@@ -47,6 +52,32 @@ export function LibraryScreen({
         <button disabled={busy} onClick={() => void refresh()}>
           Refresh Library
         </button>
+        <div
+          className="library-view-switch"
+          role="group"
+          aria-label="Library view"
+        >
+          <button
+            type="button"
+            aria-pressed={view === 'grid'}
+            onClick={() => {
+              setView('grid');
+              setSelectedId(null);
+            }}
+          >
+            Grid
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === 'shelf'}
+            onClick={() => {
+              setView('shelf');
+              setSelectedId(null);
+            }}
+          >
+            Shelf
+          </button>
+        </div>
       </header>
       {error && <p role="alert">{error}</p>}
       {results.length > 0 && (
@@ -77,8 +108,11 @@ export function LibraryScreen({
           <p role="status">
             Desktop core connected · {state.books.length} books
           </p>
-          <LibraryGrid
+          <LibraryRenderer
+            view={view}
             books={state.books}
+            selectedId={selectedId}
+            select={setSelectedId}
             disabled={busy}
             open={(id) => void act(() => open(id))}
             remove={(id) => void act(() => api.remove(id))}

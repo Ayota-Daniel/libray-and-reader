@@ -137,6 +137,25 @@ p {
   list-style: none;
   padding: 0;
 }
+.library-view-switch {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: 1rem;
+  padding: 0.2rem;
+  border: 1px solid #3a3b44;
+  border-radius: 9px;
+  vertical-align: middle;
+}
+.library-view-switch button {
+  padding: 0.4rem 0.75rem;
+  border-color: transparent;
+  background: transparent;
+}
+.library-view-switch button[aria-pressed='true'] {
+  border-color: #504666;
+  background: #353044;
+  color: #e3d9ff;
+}
 .book-card {
   min-width: 0;
 }
