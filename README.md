@@ -15,7 +15,9 @@ restarts; opening a Library or Home Continue Reading card resumes the saved page
 The active Reader session itself is not automatically restored on startup.
 
 Static JPEG/PNG with ZIP Stored/Deflate are supported. No CBR/PDF/WebP, remote
-sources, animated transitions or installers. Covers are placeholders.
+sources, animated transitions or installers. Persistent Library imports generate
+small derived PNG covers under the Tauri application-data `covers/` directory; the
+source CBZ remains authoritative and covers can be regenerated.
 Reader offers Fit Page, Fit Width, Fit Height and Original Size, bounded zoom
 (25–400% of the chosen fit), reset and pointer-drag panning for oversized pages.
 Direction/fit survive screen changes; zoom and pan reset on page changes.
@@ -25,7 +27,7 @@ set with a 64 MiB decoded-size estimate target. Up to two active pages are pinne
 a large active pair may use up to 96,000,000 estimated bytes, with speculation skipped. Cached navigation avoids a new archive read.
 Large pages reduce neighbor retention; leaving Reader clears the cache.
 See [architecture](docs/architecture.md) for precise limits, ordering, supported
-ZIP variants, source/session contracts and resource ownership.
+ZIP variants, cover storage, source/session contracts and resource ownership.
 
 ## Linux setup
 

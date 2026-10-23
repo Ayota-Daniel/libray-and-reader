@@ -30,7 +30,12 @@ pub type CommandResult<T> = Result<T, ErrorDto>;
 pub(crate) fn allowed_origin(origin: &str) -> bool {
     matches!(
         origin,
-        "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost"
+        "tauri://localhost"
+            | "http://tauri.localhost"
+            | "https://tauri.localhost"
+            | "cover://localhost"
+            | "http://cover.localhost"
+            | "https://cover.localhost"
     ) || (cfg!(debug_assertions) && origin == "http://127.0.0.1:1420")
 }
 pub(crate) fn authorize(window: &WebviewWindow) -> CommandResult<()> {

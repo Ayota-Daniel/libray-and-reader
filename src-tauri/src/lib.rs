@@ -28,7 +28,13 @@ pub fn run() {
                     })?;
                     Ok(dir.join("library.sqlite3"))
                 });
-            app.manage(core::library::Library::open(path));
+            let app_data = app.path().app_data_dir().map_err(|e| {
+                core::error::ReaderError::new(
+                    core::error::ErrorCode::PersistenceFailed,
+                    e.to_string(),
+                )
+            })?;
+            app.manage(core::library::Library::open(path, app_data));
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("page", |context, request, responder| {
@@ -42,6 +48,18 @@ pub fn run() {
                 .get_webview_window(context.webview_label())
                 .is_some_and(|window| commands::authorize(&window).is_ok());
             media::serve(reader, authorized, request, responder);
+        })
+        .register_asynchronous_uri_scheme_protocol("cover", |context, request, responder| {
+            let library = context
+                .app_handle()
+                .state::<Arc<core::library::Library>>()
+                .inner()
+                .clone();
+            let authorized = context
+                .app_handle()
+                .get_webview_window(context.webview_label())
+                .is_some_and(|window| commands::authorize(&window).is_ok());
+            media::serve_cover(library, authorized, request, responder);
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {

@@ -70,7 +70,7 @@ fn migration_reopen_idempotence_future_version_and_corruption() {
 fn valid_import_duplicate_invalid_import_and_persistent_reopen() {
     let dir = Directory::new();
     let file = dir.cbz(3);
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     let bad = dir.0.join("bad.cbz");
     std::fs::write(&bad, b"bad zip").unwrap();
     let results = library
@@ -86,7 +86,7 @@ fn valid_import_duplicate_invalid_import_and_persistent_reopen() {
     assert_eq!(books[0].page_count, 3);
     let id = books[0].id.clone();
     drop(library);
-    let reopened = Library::open(Ok(dir.db()));
+    let reopened = Library::open(Ok(dir.db()), dir.0.clone());
     assert_eq!(reopened.list().unwrap()[0].id, id);
     let dto = crate::commands::BookDto::from(reopened.list().unwrap().remove(0));
     let json = serde_json::to_string(&dto).unwrap();
@@ -94,11 +94,108 @@ fn valid_import_duplicate_invalid_import_and_persistent_reopen() {
     assert!(!json.contains("sourceRef"));
     assert!(!json.contains("path"));
 }
+
+#[test]
+fn covers_use_first_valid_page_are_bounded_and_regenerate_without_breaking_books() {
+    let dir = Directory::new();
+    let path = dir.0.join("cover.cbz");
+    let bad = Entry::new("00.txt", b"not an image".to_vec(), 0);
+    let mut corrupt = Entry::new("01.png", b"broken png".to_vec(), 0);
+    corrupt.bad_crc = true;
+    std::fs::write(
+        &path,
+        zip(&[
+            bad,
+            corrupt,
+            Entry::new("02.png", image_bytes(image::ImageFormat::Png, 2, 3), 0),
+        ]),
+    )
+    .unwrap();
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
+    assert_eq!(
+        library.import(vec![path.clone()]).unwrap()[0].outcome,
+        "imported"
+    );
+    let book = library.list().unwrap().remove(0);
+    let bytes = library.cover(&book.id).unwrap();
+    let image = image::load_from_memory(&bytes).unwrap();
+    assert_eq!(image.dimensions(), (2, 3), "tiny source is not upscaled");
+    let (cover, stamp) = library.cover_paths(&book.id).unwrap();
+    assert!(library.cover_paths("../escape").is_err());
+    std::fs::remove_file(&cover).unwrap();
+    assert!(
+        library.cover(&book.id).is_ok(),
+        "missing thumbnail regenerates"
+    );
+    std::fs::write(&stamp, b"stale").unwrap();
+    assert!(
+        library.cover(&book.id).is_ok(),
+        "stale metadata regenerates"
+    );
+    std::fs::write(
+        &path,
+        zip(&[Entry::new(
+            "page.png",
+            image_bytes(image::ImageFormat::Png, 4, 5),
+            0,
+        )]),
+    )
+    .unwrap();
+    assert_eq!(
+        image::load_from_memory(&library.cover(&book.id).unwrap())
+            .unwrap()
+            .dimensions(),
+        (4, 5),
+        "source timestamp/size change invalidates the old cover"
+    );
+    let cached = std::fs::read(&cover).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(
+        library.cover(&book.id).unwrap(),
+        cached,
+        "missing source retains its derived cover"
+    );
+    assert!(!library.list().unwrap()[0].available);
+}
+
+#[test]
+fn landscape_thumbnail_keeps_its_ratio_and_long_edge_bound() {
+    let dir = Directory::new();
+    let path = dir.0.join("landscape.cbz");
+    std::fs::write(
+        &path,
+        zip(&[Entry::new(
+            "page.png",
+            image_bytes(image::ImageFormat::Png, 720, 360),
+            0,
+        )]),
+    )
+    .unwrap();
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
+    library.import(vec![path]).unwrap();
+    let book = library.list().unwrap().remove(0);
+    let image = image::load_from_memory(&library.cover(&book.id).unwrap()).unwrap();
+    assert_eq!(image.dimensions(), (360, 180));
+}
+
+#[test]
+fn cover_generation_is_single_flight_and_failed_cover_keeps_imported_book() {
+    let dir = Directory::new();
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
+    let path = dir.0.join("bad-cover.cbz");
+    std::fs::write(&path, zip(&[Entry::new("page.png", b"broken".to_vec(), 0)])).unwrap();
+    assert_eq!(library.import(vec![path]).unwrap()[0].outcome, "imported");
+    assert_eq!(library.list().unwrap().len(), 1);
+    let permit = library.admit_cover().unwrap();
+    assert!(matches!(library.admit_cover(), Err(error) if error.code == ErrorCode::Busy));
+    drop(permit);
+    assert_eq!(library.list().unwrap().len(), 1);
+}
 #[test]
 fn missing_restored_and_removed_book_never_deletes_source() {
     let dir = Directory::new();
     let file = dir.cbz(2);
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     library.import(vec![file.clone()]).unwrap();
     let id = library.list().unwrap()[0].id.clone();
     let moved = dir.0.join("moved.cbz");
@@ -123,7 +220,7 @@ fn missing_restored_and_removed_book_never_deletes_source() {
 fn progress_resume_clamp_completion_and_valid_reader_session() {
     let dir = Directory::new();
     let file = dir.cbz(4);
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     library.import(vec![file]).unwrap();
     let id = library.list().unwrap()[0].id.clone();
     let reader = Arc::new(Reader::default());
@@ -149,7 +246,7 @@ fn progress_resume_clamp_completion_and_valid_reader_session() {
     assert!(reader.progress(&book.session_id, 1, 1).is_err());
     assert!(reader.progress(&book.session_id, 99, 2).is_err());
     drop(library);
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     let op = reader.begin_open().unwrap();
     let resumed = library
         .open_book(&id, reader.start_open(&op).unwrap())
@@ -182,7 +279,7 @@ fn progress_resume_clamp_completion_and_valid_reader_session() {
 fn write_failures_are_typed_retryable_and_do_not_replace_reader() {
     let dir = Directory::new();
     let file = dir.cbz(2);
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     library.import(vec![file]).unwrap();
     let id = library.list().unwrap()[0].id.clone();
     library
@@ -230,12 +327,12 @@ fn write_failures_are_typed_retryable_and_do_not_replace_reader() {
 #[test]
 fn bounded_operations_and_unavailable_database_report_errors() {
     let dir = Directory::new();
-    let library = Library::open(Ok(dir.0.clone()));
+    let library = Library::open(Ok(dir.0.clone()), dir.0.clone());
     assert_eq!(
         library.list().unwrap_err().code,
         ErrorCode::PersistenceFailed
     );
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     let permit = library.admit().unwrap();
     assert!(library.admit().is_err());
     drop(permit);
@@ -253,7 +350,7 @@ fn bounded_operations_and_unavailable_database_report_errors() {
 fn malformed_record_is_rejected_instead_of_leaking_internal_data() {
     let dir = Directory::new();
     let file = dir.cbz(1);
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     library.import(vec![file]).unwrap();
     library
         .repository(|r| {
@@ -272,7 +369,7 @@ fn malformed_record_is_rejected_instead_of_leaking_internal_data() {
 fn shutdown_flushes_the_latest_coalesced_progress() {
     let dir = Directory::new();
     let file = dir.cbz(100);
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     library.import(vec![file]).unwrap();
     let id = library.list().unwrap()[0].id.clone();
     for index in 0..100 {
@@ -288,7 +385,7 @@ fn shutdown_flushes_the_latest_coalesced_progress() {
     }
     library.shutdown().unwrap();
     drop(library);
-    let reopened = Library::open(Ok(dir.db()));
+    let reopened = Library::open(Ok(dir.db()), dir.0.clone());
     let book = reopened.list().unwrap().remove(0);
     assert_eq!(book.last_page_index, Some(99));
     assert_eq!(book.progress_page_count, Some(100));
@@ -299,7 +396,7 @@ fn shutdown_flushes_the_latest_coalesced_progress() {
 fn failed_open_metadata_write_and_cancel_preserve_existing_reader() {
     let dir = Directory::new();
     let file = dir.cbz(2);
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     library.import(vec![file.clone()]).unwrap();
     let id = library.list().unwrap()[0].id.clone();
     let reader = Arc::new(Reader::default());
@@ -340,7 +437,7 @@ fn failed_open_metadata_write_and_cancel_preserve_existing_reader() {
 #[test]
 fn canonical_spread_progress_keeps_anchor_and_completes_without_schema_change() {
     let dir = Directory::new();
-    let library = Library::open(Ok(dir.db()));
+    let library = Library::open(Ok(dir.db()), dir.0.clone());
     library.import(vec![dir.cbz(4)]).unwrap();
     let id = library.list().unwrap()[0].id.clone();
     let reader = Arc::new(Reader::default());

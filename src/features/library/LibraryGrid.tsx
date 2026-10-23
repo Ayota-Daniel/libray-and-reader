@@ -1,5 +1,6 @@
 import type { LibraryBook } from './model';
 import { EmptyState } from '../../shared/ui/EmptyState';
+import { BookVisual } from './BookVisual';
 export function BookCard({
   book,
   open,
@@ -12,12 +13,10 @@ export function BookCard({
   disabled?: boolean;
 }) {
   return (
-    <article className="book-card">
-      <div className="cover-placeholder" aria-hidden="true">
-        CBZ
-      </div>
+    <article className="book-card" data-status={book.status}>
+      <BookVisual book={book} />
       <h2>{book.title}</h2>
-      <p>
+      <p className="book-meta">
         {book.status === 'completed'
           ? 'Completed'
           : book.status === 'reading'
@@ -26,12 +25,12 @@ export function BookCard({
         ·{' '}
         {book.lastPageIndex === null
           ? `${book.pageCount} pages`
-          : `Page ${Math.min(book.lastPageIndex + 1, book.pageCount)} / ${book.pageCount}`}
+          : `Page ${Math.min(book.lastPageIndex + 1, book.pageCount)} / ${book.progressPageCount ?? book.pageCount}`}
       </p>
       {!book.available && (
         <p>Unavailable — restore the original file, then retry.</p>
       )}
-      <button disabled={disabled} onClick={open}>
+      <button className="book-open" disabled={disabled} onClick={open}>
         {book.lastOpenedAt === null ? 'Open book' : 'Resume reading'}
       </button>
       {remove && (

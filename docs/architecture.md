@@ -558,10 +558,48 @@ Bounds:
   change. Browser allocator, decode, transport and compositor overhead still mean
   these are ownership/payload estimates, not a process/GPU RSS guarantee.
 
-No disk cache, preference persistence, source splitting, transition/animation,
-continuous mode, thumbnails, new format or series model is introduced. Native
-visual acceptance remains outstanding. Recommended V0.7: complete that acceptance,
-then bounded regenerable Library cover thumbnails with separate derived storage.
+No Reader page disk cache, preference persistence, source splitting,
+transition/animation, continuous mode, new format or series model is introduced.
+Native visual acceptance remains outstanding.
+
+### Persistent covers and Library presentation (V0.7)
+
+The SQLite `Book`/Library DTO remains metadata-only. A separate React `BookVisual`
+renders a stable cover frame, native cover image or deterministic title/CBZ fallback,
+progress and availability/completion markers. Library and Home Continue Reading
+reuse `BookCard`/`BookVisual`; a future renderer can consume the same presentation
+data for a list or shelf. Cover aspect ratio is retained inside a stable frame; no
+crop or upscale is applied. The modest elevation uses CSS and honors reduced motion.
+
+Persistent import still validates and inserts the CBZ first. Cover creation is
+best-effort and does not roll back a valid entry. It reopens the same safe `CbzSource`
+and reads canonical image pages in order until the first page that passes the
+existing CRC, byte, dimension, pixel and decode limits. One image is decoded at a
+time; a single shared admission flag bounds cover generation to one worker. A cover
+is resized (Lanczos) to at most 360 pixels on its long edge, never upscaled, then
+encoded as PNG. The full page is never transferred to React. Per-image working
+memory inherits the CBZ decoder limit; encoded cache reads are capped at 1 MiB.
+
+Derived PNGs and a 20-byte source stamp live under Tauri's platform-provided
+application-data directory in `covers/<opaque-book-id>.png` and `.stamp`. Writes
+use opaque temporary names and atomic rename. The stamp contains source length and
+modification time (seconds and nanoseconds); this avoids hashing the archive. A
+same-size replacement whose timestamp is preserved can evade invalidation. Missing
+or stale covers regenerate on demand through a custom `cover` resource scheme, also
+used by Home and Library. `convertFileSrc` receives only the validated opaque book
+ID. The media handler checks the main window, allowed origin, GET and ID syntax;
+CSP explicitly permits only the app's cover protocol origins. No native path or
+arbitrary file URL reaches React.
+
+Existing schema-v1 records remain unchanged and usable. Their first visible image
+requests lazily create a cover; import-time generation is synchronous but serial
+within the already bounded import operation. Cover availability stays out of the
+Book DTO; a failed request shows the same deterministic fallback with an explicit
+retry action when the source remains available.
+Missing sources retain and serve any bounded cached PNG; missing sources with no
+thumbnail show the fallback while the stored title remains visible. A broken cover
+does not alter book availability. No schema migration or physical thickness value
+is introduced; spine/thickness are deferred until the future renderer needs them.
 
 ## Linux runtime compatibility (V0.6.1)
 

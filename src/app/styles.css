@@ -132,10 +132,132 @@ p {
 }
 .library-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+  gap: 1.5rem;
   list-style: none;
   padding: 0;
+}
+.book-card {
+  min-width: 0;
+}
+.book-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 0.72;
+  padding: 0.65rem;
+  border-radius: 8px;
+  background: linear-gradient(145deg, #292a33, #191a20);
+  box-shadow:
+    0 12px 24px #0007,
+    inset 3px 0 #ffffff12;
+  overflow: hidden;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+.book-card:hover .book-visual,
+.book-card:focus-within .book-visual {
+  transform: translateY(-3px);
+  box-shadow:
+    0 18px 28px #0009,
+    inset 3px 0 #ffffff20;
+}
+.book-visual img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  box-shadow: 0 5px 14px #0008;
+}
+.book-fallback {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 82%;
+  height: 92%;
+  padding: 1rem 1rem 1rem 1.4rem;
+  overflow: hidden;
+  background: linear-gradient(135deg, #49435e, #242230);
+  border-radius: 3px 7px 7px 3px;
+  box-shadow:
+    0 7px 16px #0008,
+    inset 2px 0 #ffffff40;
+  color: #f0eafb;
+  overflow-wrap: anywhere;
+}
+.book-fallback-spine {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.55rem;
+  background: #1115;
+}
+.book-fallback small {
+  margin-top: 0.8rem;
+  color: #c7bfd7;
+  letter-spacing: 0.14em;
+}
+.book-status {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  border-radius: 50%;
+  background: #263b31ef;
+  color: #b8e5cb;
+  padding: 0.12rem 0.4rem;
+}
+.book-unavailable {
+  position: absolute;
+  bottom: 0.6rem;
+  left: 0.6rem;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  background: #301f25ef;
+  color: #ffc6c6;
+  font-size: 0.7rem;
+}
+.cover-retry {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.book-progress {
+  position: absolute;
+  right: 0.7rem;
+  bottom: 0.6rem;
+  left: 0.7rem;
+  height: 3px;
+  background: #ffffff44;
+  border-radius: 4px;
+}
+.book-progress span {
+  display: block;
+  height: 100%;
+  background: #d2c3ff;
+  border-radius: inherit;
+}
+.book-card h2 {
+  margin: 0.8rem 0 0.1rem;
+  overflow-wrap: anywhere;
+}
+.book-card .book-meta {
+  margin: 0 0 0.6rem;
+  font-size: 0.82rem;
+}
+.book-card .book-open {
+  width: 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .book-visual {
+    transition: none;
+  }
 }
 .skip-link {
   position: absolute;

@@ -594,6 +594,39 @@ the permitted single retry succeeded, but the interaction did not validate impor
 The previous day's usage-limit approval failure was also resolved by the successful
 launcher run. No permission request remains pending.
 
-Changed files: `package.json`, new `tools/dev-wayland-compat.sh`, `README.md`,
-`docs/architecture.md`, `docs/validation.md`. Application version, domain code,
-production environment and both lockfiles are unchanged. No commit or push was made.
+Changed files at V0.6.1: `package.json`, new `tools/dev-wayland-compat.sh`,
+`README.md`, `docs/architecture.md`, `docs/validation.md`. That milestone is
+committed separately as `c58a353`.
+
+## V0.7 cover and Library validation
+
+Rust cover fixtures are synthetic ZIPs made in per-test temporary directories.
+They include a non-image entry, a CRC-corrupt first image, and a valid later page;
+tests verify the valid page is selected, tiny dimensions are not upscaled, a
+deleted cover regenerates, stale source-stamp data regenerates, a removed source
+retains its bounded cached PNG, one generation admission is enforced, and a valid
+book remains in the library when every cover page is corrupt. No real app data is
+used by these tests.
+
+Manual native checklist for V0.7: import an existing-schema book, verify its cover
+is generated and dominates the Library tile; restart and verify the cached image;
+delete one cache PNG and revisit to regenerate; replace a source file and verify
+the stamp triggers regeneration; disconnect/move a source and verify the old cover
+and unavailable marker remain; compare the Home Continue Reading image; verify
+wide/landscape art remains uncropped and tiny covers remain crisp. On this Linux
+Wayland workstation, the native launcher was previously confirmed to start with
+the opt-in compatibility variable. V0.7 changes have not yet received a fresh
+manual native UI run, so image-protocol/WebView rendering remains unaccepted.
+
+Accumulated V0.2–V0.6 native checks still outstanding from the earlier acceptance
+record: mouse pan; persistent progress after restart and Continue Reading resume;
+missing-source recovery; metadata-only removal while retaining the CBZ; reverse
+spread navigation; odd final spread; isolated cover behavior; and wide-page
+behavior. Earlier screenshots did observe the basic native Library, Reader pages,
+double spreads, RTL, fit modes and direct page jump, but do not substitute for this
+remaining list.
+
+The next V0.8 should finish the accumulated native acceptance and V0.7 cover
+protocol/UI checks first, then add a user-selectable Classic Grid/List renderer
+boundary with shared book presentation data if desired. Do not start immersive
+3D or PageCurl until those native foundations are accepted.

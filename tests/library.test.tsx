@@ -151,6 +151,34 @@ test('opening saved library progress uses the same Reader and refreshes progress
   await click('Library');
   expect(host.textContent).toContain('Reading · Page 2 / 3');
 });
+test('BookVisual uses the opaque cover resource, preserves progress and falls back on load failure', async () => {
+  const data = fixture([
+    {
+      ...saved,
+      lastOpenedAt: 5,
+      lastPageIndex: 1,
+      progressPageCount: 3,
+      lastReadAt: 6,
+      status: 'reading',
+    },
+  ]);
+  await mount(data);
+  await click('Library');
+  const cover = host.querySelector('.book-visual img');
+  expect(cover?.getAttribute('src')).toBe(`cover://localhost/${saved.id}`);
+  expect(
+    host.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'),
+  ).toBe('67');
+  expect(host.textContent).toContain('Reading · Page 2 / 3');
+  await act(async () => cover?.dispatchEvent(new Event('error')));
+  expect(host.querySelector('.book-fallback')?.textContent).toContain(
+    'Volume One',
+  );
+  await click('Retry cover');
+  expect(host.querySelector('.book-visual img')?.getAttribute('src')).toBe(
+    `cover://localhost/${saved.id}`,
+  );
+});
 test('Home Continue Reading opens persistent identity; direct Open CBZ never imports', async () => {
   const data = fixture([
     {

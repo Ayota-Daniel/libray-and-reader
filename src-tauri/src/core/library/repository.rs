@@ -209,6 +209,15 @@ impl Repository {
         tx.commit().map_err(db_error)?;
         Ok(true)
     }
+    pub fn id_for_path(&self, path: &Path) -> Result<String> {
+        self.connection
+            .query_row(
+                "SELECT id FROM books WHERE source_kind='local_cbz' AND source_ref=?",
+                [encode(path)],
+                |r| r.get(0),
+            )
+            .map_err(db_error)
+    }
     pub fn opened(&self, id: &str, count: usize) -> Result<()> {
         let changed = self
             .connection

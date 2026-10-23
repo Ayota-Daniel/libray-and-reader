@@ -2,6 +2,7 @@ use crate::{
     commands::{allowed_origin, ErrorDto},
     core::{
         error::{ErrorCode as Code, ReaderError as Error},
+        library::Library,
         reader::Reader,
     },
 };
@@ -37,6 +38,54 @@ fn response(
             .header("X-Page-Height", height);
     }
     builder.body(body).expect("fixed valid HTTP headers")
+}
+pub fn serve_cover(
+    library: Arc<Library>,
+    authorized: bool,
+    request: Request<Vec<u8>>,
+    responder: UriSchemeResponder,
+) {
+    let origin = request
+        .headers()
+        .get("Origin")
+        .and_then(|h| h.to_str().ok())
+        .map(str::to_owned);
+    if !authorized
+        || origin.as_deref().is_some_and(|o| !allowed_origin(o))
+        || request.method() != "GET"
+    {
+        reject(
+            responder,
+            Error::new(Code::Forbidden, "cover window/origin/method"),
+            None,
+        );
+        return;
+    }
+    let Some(id) = request.uri().path().strip_prefix('/').filter(|id| {
+        id.len() == 32
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    }) else {
+        reject(
+            responder,
+            Error::new(Code::InvalidPage, "cover identifier syntax"),
+            origin.as_deref(),
+        );
+        return;
+    };
+    let id = id.to_owned();
+    let permit = match library.admit_cover() {
+        Ok(permit) => permit,
+        Err(error) => {
+            reject(responder, error, origin.as_deref());
+            return;
+        }
+    };
+    tauri::async_runtime::spawn_blocking(move || match library.cover_admitted(&id, &permit) {
+        Ok(bytes) => responder.respond(response(200, "image/png", origin.as_deref(), bytes, None)),
+        Err(error) => reject(responder, error, origin.as_deref()),
+    });
 }
 fn reject(responder: UriSchemeResponder, error: Error, origin: Option<&str>) {
     let status = match error.code {
