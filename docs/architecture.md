@@ -562,3 +562,21 @@ No disk cache, preference persistence, source splitting, transition/animation,
 continuous mode, thumbnails, new format or series model is introduced. Native
 visual acceptance remains outstanding. Recommended V0.7: complete that acceptance,
 then bounded regenerable Library cover thumbnails with separate derived storage.
+
+## Linux runtime compatibility (V0.6.1)
+
+The optional Linux-only `tools/dev-wayland-compat.sh` launcher sets
+`__NV_DISABLE_EXPLICIT_SYNC=1` before delegating to the unchanged `bun run dev`.
+This addresses the observed WebKitGTK/GTK/NVIDIA Wayland startup interaction. It
+does not belong to Reader, PageCache, spread planning or Library. No domain code,
+SQLite migration, dependency or production startup flag changes. The ordinary dev
+command remains the upstream retest path; remove compatibility flags from the
+calling environment before comparison. The helper adds no X11/DMABUF-disable flags.
+
+Automatic production detection is intentionally not implemented: it would need to
+distinguish affected NVIDIA rendering from merely installed GPUs on hybrid hosts,
+verify the active Wayland backend, account for fixed/backported WebKitGTK versions,
+and offer an explicit opt-out. Effects on non-NVIDIA configurations were not
+measured, so no broad safety claim is made. Once a fixed system build passes native
+acceptance without the variable, use the ordinary launcher. This is separate from
+application logic and does not require changing rendering architecture.

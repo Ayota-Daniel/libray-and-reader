@@ -461,3 +461,139 @@ acceptance and Windows/macOS testing remain outstanding.
 Exact recommended V0.7: complete native acceptance, then bounded, regenerable
 Library cover thumbnails, stored outside SQLite/source archives and served through
 opaque identifiers. No V0.7 work has been started.
+
+## V0.6.1 Linux Wayland / NVIDIA development compatibility
+
+Local tests performed 2026-10-22, resumed 2026-10-23 (Europe/Bucharest), from
+committed V0.6 `126aba5`. Only the explicit development helper, package script and
+documentation change. No V0.7 work, system configuration, package downgrade,
+WebKitGTK patch/vendor, Reader/cache/planner/SQLite or production startup change.
+
+### Actual local environment
+
+| Item                                  | Observed value                                                                           |
+| ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| XDG_SESSION_TYPE                      | `wayland`                                                                                |
+| WAYLAND_DISPLAY / DISPLAY             | `wayland-1` / `:0` (DISPLAY alone does not imply XWayland)                               |
+| Compositor                            | Hyprland on Omarchy/Arch Linux                                                           |
+| Discrete GPU                          | NVIDIA GP104 GeForce GTX 1070 Ti, PCI `10de:1b82`, kernel driver `nvidia`                |
+| Additional PCI GPU                    | AMD Cezanne Radeon Vega, PCI `1002:1638`; not evidence of which GPU rendered the WebView |
+| NVIDIA driver                         | `580.178.04`, confirmed by `/proc/driver/nvidia/version` and unsandboxed `nvidia-smi`    |
+| NVIDIA user-space package             | `nvidia-580xx-utils 580.178.04-1.1`                                                      |
+| webkit2gtk-4.1                        | `2.52.6-1`, not the 2.54.1 assumed in the brief                                          |
+| gtk3                                  | `1:3.24.52-1`                                                                            |
+| egl-wayland                           | `4:1.1.22-1`                                                                             |
+| Cargo Tauri / tauri-runtime-wry / wry | `2.12.4` / `2.12.2` / `0.57.0`                                                           |
+
+Commands: `command -v`, `lspci -nnk`, `pacman -Q`, `nvidia-smi`, kernel driver
+version, Cargo.lock inspection and filtered `hyprctl clients -j`. All diagnostic
+commands used were present. Sandboxed NVIDIA/Hyprland queries failed and the dev
+server initially hit `listen EPERM` on localhost:1420; repeating with approved
+desktop access succeeded. Those sandbox failures are not driver/startup findings.
+The package versions above were rechecked unchanged on October 23.
+
+### Baseline and ordered workaround tests
+
+Baseline removed `GDK_BACKEND`, `WEBKIT_DISABLE_DMABUF_RENDERER`,
+`WEBKIT_DISABLE_COMPOSITING_MODE` and `__NV_DISABLE_EXPLICIT_SYNC`, then ran
+`bun run dev` with test-only `XDG_DATA_HOME=/tmp/manga-v061-data`. Vite and Rust
+started, then the native application exited with code 1 and:
+
+```text
+Gdk-Message: Error 71 (Protocol error) dispatching to Wayland display.
+```
+
+The same clean graphics environment with only `__NV_DISABLE_EXPLICIT_SYNC=1`
+started successfully. Hyprland reported class `manga-reader`, a mapped visible
+window and `xwayland: false` (PID 50528 on October 22). Screenshots of the actual
+window, not the browser preview, confirmed Home, Library and rendered CBZ pages.
+The application closed through the compositor's normal close request with exit
+code 0. The new `bun run dev:wayland-compat` launched successfully again on October
+23; Hyprland again confirmed `xwayland: false` (PID 5648), and Home/Library/the GTK
+picker rendered. No DMABUF-disable flag was set. This verifies the normal path was
+not explicitly disabled; it is not a GPU performance or WebGL benchmark.
+
+Workaround 2 (DMABUF disabled) and XWayland were **not retested**, because the
+preferred workaround already enabled native rendering. Historical XWayland
+process-survival results remain historical and are not native acceptance. No
+compositing-disable test or production workaround was introduced.
+
+### Observed native acceptance and remaining checks
+
+These are manual observations through native screenshots and keyboard input, not
+claims inferred from passing tests or a live process:
+
+| Scenario                                                            | Result                                                                                                           |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Window, Home, Library and empty catalog                             | Observed rendered on native Wayland                                                                              |
+| Native Add Books dialog                                             | Observed; keyboard injection required modifier resets                                                            |
+| Import synthetic `cache.cbz`                                        | Observed October 22: one imported, eight pages, one Library card                                                 |
+| Open Library book / Single page                                     | Observed actual numbered page 1, then page 2                                                                     |
+| Next/Previous                                                       | Exercised arrows forward/back; observed correct destination                                                      |
+| Double / LTR                                                        | Observed canonical pages 1 and 2 side by side, indicator 1–2/8                                                   |
+| RTL                                                                 | Observed page 2 left, page 1 right; indicator remains canonical                                                  |
+| Fit Page, Width, Height / zoom                                      | Observed native rendered changes; zoom 141% of fit and overflow scrollbars                                       |
+| Go to page                                                          | Entering 6 displayed pages 5–6 in RTL, correct indicator                                                         |
+| Adjacent spread return                                              | Exercised and rendered; exact cache hit rate/latency not instrumented                                            |
+| Resize                                                              | Compositor resize exercised without process exit                                                                 |
+| Normal close                                                        | Observed exit code 0 on October 22                                                                               |
+| Persistent restart/resume / Continue Reading                        | Not yet manually accepted; previous /tmp fixtures were gone on October 23 and the new test catalog started empty |
+| Duplicate import, missing/restore/remove, temporary Open CBZ        | Still outstanding native acceptance                                                                              |
+| Cover alone, wide isolation, odd tail, one-page completion          | Still outstanding native acceptance                                                                              |
+| Pointer-drag pan, rapid-navigation stress, cancellation/error cases | Still outstanding native acceptance                                                                              |
+
+No persistent black frame or severe corruption was observed in the captured Home,
+Library or Reader states. Captures cannot establish freedom from brief flicker.
+One capture caught the GTK dialog fading over the Library during closure; this
+is not classified as persistent corruption. Two `Gtk-CRITICAL`
+`gtk_widget_event: assertion 'WIDGET_REALIZED_FOR_EVENT (widget, event)' failed`
+messages occurred during synthetic dialog input on October 22; their cause is
+not established. No recurring Error 71 occurred with the explicit-sync workaround.
+Do not treat this partial development validation as complete V0.2–V0.6 release
+acceptance: all earlier scenarios remain available above.
+
+### Upstream limitation and scope
+
+[Tauri's graphics guide](https://v2.tauri.app/develop/debug/linux-graphics/) lists
+explicit-sync disabling before DMABUF/compositing fallbacks.
+[WebKit issue 324551](https://bugs.webkit.org/show_bug.cgi?id=324551) records a
+related GTK GL-context/explicit-sync fix landed October 5, 2026, as
+[322671@main](https://commits.webkit.org/322671@main). Local Error 71 plus successful
+explicit-sync disabling is consistent with that issue; no protocol trace was
+captured to prove the exact local failure mechanism. Installed package version
+alone does not prove inclusion/exclusion of downstream backports. The observed
+baseline still fails, so a fixed local build has not been demonstrated.
+
+After a normal system update, retest unmodified `bun run dev` with compatibility
+variables unset and repeat native rendering acceptance. Do not assume the first
+fixed upstream commit guarantees this particular machine is fixed. Automatic
+production GPU/backend/version detection and non-NVIDIA behavior are untested;
+the opt-in Linux development helper is the narrower solution. Users bypass it
+with the ordinary dev command. Its explicit flag overrides an inherited value
+only for this subprocess; it does not edit global environment/configuration.
+
+V0.7 is not started. Native development is now practical on this tested stack,
+but complete accumulated native acceptance remains a prerequisite for calling
+the baseline fully validated.
+
+### Final V0.6.1 regression run (2026-10-23)
+
+- Frozen Bun install: passed, dependencies/lockfiles unchanged.
+- Prettier and rustfmt checks, ESLint, application/test TypeScript: passed.
+- Frontend: 69 tests, 441 assertions, zero failures.
+- Rust: 32 tests, zero failures; locked offline Clippy with warnings denied passed.
+- Vite production build and Linux release build: passed (13.65 seconds native build).
+- Shell helper syntax (`sh -n`): passed. The helper itself was launched on the real
+  Wayland desktop with compatibility flags initially unset.
+- Final test dialog/application closed normally on October 23; dev command exit 0.
+
+The October 23 import retry could not be completed reliably with synthetic keyboard
+input; it does not invalidate the visibly successful October 22 import, and it is
+not evidence that import itself is broken. A desktop-action approval timed out;
+the permitted single retry succeeded, but the interaction did not validate import.
+The previous day's usage-limit approval failure was also resolved by the successful
+launcher run. No permission request remains pending.
+
+Changed files: `package.json`, new `tools/dev-wayland-compat.sh`, `README.md`,
+`docs/architecture.md`, `docs/validation.md`. Application version, domain code,
+production environment and both lockfiles are unchanged. No commit or push was made.

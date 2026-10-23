@@ -14,7 +14,8 @@
     "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "test": "bun test",
     "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings",
-    "typecheck:tests": "tsc --project tsconfig.tests.json --noEmit"
+    "typecheck:tests": "tsc --project tsconfig.tests.json --noEmit",
+    "dev:wayland-compat": "sh tools/dev-wayland-compat.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "2",

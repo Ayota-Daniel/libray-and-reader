@@ -93,19 +93,29 @@ No downloads or real manga are needed. Follow the native release scenario in
 [validation](docs/validation.md). Automated test success does not establish native
 picker, CSP or WebView rendering success.
 
-## Display limitation on this Linux machine
+## Linux Wayland / NVIDIA troubleshooting
 
-The V0.1 Wayland startup check failed with a GTK protocol error. A process-local
-fallback is available without changing any system settings:
+On the tested Hyprland/NVIDIA GTX 1070 Ti machine (WebKitGTK 2.52.6), normal native
+Wayland startup reproduces GDK Error 71. The following opt-in Linux-only launcher
+was verified to render the application and CBZ pages as a native Wayland client:
 
 ```sh
-GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 bun run dev
-GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 src-tauri/target/release/manga-reader
+bun run dev:wayland-compat
 ```
 
-A process staying alive is not a rendering or IPC test. Native interaction must
-still be verified as described in the validation document. This workaround is
-not baked into application code or made global.
+It sets only `__NV_DISABLE_EXPLICIT_SYNC=1`; it does not force X11 or disable the
+WebKitGTK DMABUF renderer. This is an upstream graphics-stack compatibility
+workaround, not a Reader requirement or a universal Linux setting. The helper
+rejects non-Linux hosts. Use a clean environment without inherited X11/DMABUF
+workarounds when testing it. Windows/macOS and unaffected Linux systems continue
+to use `bun run dev`, which remains unchanged.
+
+After graphics-stack updates, retest plain `bun run dev` with compatibility flags
+unset. Production startup sets none of these flags. Consult the
+[Tauri graphics guide](https://v2.tauri.app/develop/debug/linux-graphics/) and the
+[local validation record](docs/validation.md#v061-linux-wayland--nvidia-development-compatibility)
+for evidence and outstanding native acceptance. XWayland remains only a diagnostic
+last resort, not the normal development backend.
 
 ## Dependencies
 
